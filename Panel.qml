@@ -94,6 +94,14 @@ PanelWindow {
 
     function onSearchRequestChanged() {
       if (!window.plugin || window.plugin.searchScreen !== window.screenName) return
+      // The same keybind closes it: a pinned screen behaves like the Hide
+      // button (unpin + slide away), an unpinned one just slides away.
+      if (window.searchFocused) {
+        window.hoverRevealed = false
+        if (window.pinned) window.plugin.setPinnedFor(window.screenName, false)
+        window.releaseSearchFocus()
+        return
+      }
       window.hoverRevealed = true
       window.startSearch()
     }

@@ -57,9 +57,10 @@ o.bind("SUPER + SHIFT + K", "Keycheat search", "omarchy-shell jr.keycheat search
 ```
 
 Add it to `~/.config/hypr/bindings.lua`. The panel on the focused screen slides
-out with the search field ready, so you can type immediately. While the field
-has the keyboard the panel takes it exclusively; `Escape` (twice if there is
-text) gives it back, and focusing another window does too.
+out with the search field ready, so you can type immediately. Press it again to
+close it: on a pinned screen that also unpins, exactly like **Hide**. While the
+field has the keyboard the panel takes it exclusively; `Escape` (twice if there
+is text) gives it back, and focusing another window does too.
 
 ## Configuration
 
@@ -92,7 +93,7 @@ omarchy-shell jr.keycheat pin        # pin the focused screen
 omarchy-shell jr.keycheat unpin      # unpin the focused screen
 omarchy-shell jr.keycheat pinAll     # pin every screen
 omarchy-shell jr.keycheat unpinAll   # unpin every screen
-omarchy-shell jr.keycheat search     # reveal the focused screen and focus search
+omarchy-shell jr.keycheat search     # open the focused screen's search, or close it
 omarchy-shell jr.keycheat refresh    # re-read the bindings
 ```
 
