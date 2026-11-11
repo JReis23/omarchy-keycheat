@@ -6,7 +6,7 @@ import assert from "node:assert/strict"
 // node does not. Evaluating the body here tests the exact code the panel runs.
 const source = readFileSync(new URL("../Binds.js", import.meta.url), "utf8")
   .replace(/^\.pragma library\s*$/m, "")
-const Binds = new Function(source + "\nreturn { parse, group, count, normalizeMods, splitCombo }")()
+const Binds = new Function(source + "\nreturn { parse, group, count, filter, normalizeMods, splitCombo }")()
 
 const SAMPLE = [
   "SUPER + K                           → Keybindings",
@@ -85,4 +85,30 @@ test("parse survives the real output", () => {
     assert.ok(section.items.length > 0)
     for (const item of section.items) assert.ok(item.key.length > 0 && item.description.length > 0)
   }
+})
+
+test("filter keeps only matching rows and drops empty groups", () => {
+  const sections = Binds.group(Binds.parse(SAMPLE))
+  const close = Binds.filter(sections, "close")
+  assert.deepEqual(close.map((section) => section.mods), ["SUPER"])
+  assert.deepEqual(close[0].items.map((item) => item.key), ["Q", "W"])
+  assert.equal(Binds.count(close), 2)
+})
+
+test("filter is case-insensitive and matches modifiers too", () => {
+  const sections = Binds.group(Binds.parse(SAMPLE))
+  assert.equal(Binds.count(Binds.filter(sections, "VOLUME")), 1)
+  assert.equal(Binds.count(Binds.filter(sections, "super alt")), 1)
+  assert.equal(Binds.count(Binds.filter(sections, "super shift")), 1)
+})
+
+test("filter returns everything for an empty query", () => {
+  const sections = Binds.group(Binds.parse(SAMPLE))
+  assert.equal(Binds.filter(sections, "   "), sections)
+  assert.equal(Binds.count(Binds.filter(sections, "")), Binds.count(sections))
+})
+
+test("filter returns nothing when no row matches", () => {
+  const sections = Binds.group(Binds.parse(SAMPLE))
+  assert.deepEqual(Binds.filter(sections, "zzz-no-such-bind"), [])
 })

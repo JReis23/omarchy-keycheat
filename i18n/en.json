@@ -3,6 +3,8 @@
   "panel.pin": "Pin",
   "panel.unpin": "Unpin",
   "panel.close": "Hide",
+  "panel.search": "Search keybindings…",
+  "panel.noResults": "No keybinding matches that search.",
   "panel.empty": "No keybindings found. Check that `omarchy menu keybindings --print` works.",
   "panel.loading": "Reading keybindings…",
   "group.none": "No modifier"

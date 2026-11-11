@@ -32,13 +32,19 @@ omarchy plugin disable jr.keycheat
 
 - Move the pointer to the right edge of the screen: the panel slides out.
 - Move away: it slides back after a moment.
-- **Pin**: keeps it open on every screen until unpinned.
-- **Hide**: unpins and lets it slide away.
+- **Search** (top of the panel): click the field and type. It filters on the
+  modifier, the key and the description. `Escape` clears the text, then closes
+  the panel. The query is kept if the panel hides, so hovering it again brings
+  the same results back.
+- **Pin**: keeps the panel open **on that screen only** and reserves its width,
+  so the tiling layout makes room instead of covering the windows. Other
+  screens are untouched.
+- **Hide**: unpins that screen and lets the panel slide away.
 
 Hovering a row wraps its description instead of truncating it.
 
-The panel never takes keyboard focus, so it can stay open while you type in
-another window.
+The panel does not take keyboard focus unless you click the search field, so it
+can stay open while you type in another window.
 
 ## Configuration
 
@@ -58,7 +64,7 @@ Optional overrides in `~/.config/omarchy/shell.json`, under a `keycheat` key:
 |---|---|---|
 | `width` | `360` | Panel width in pixels (clamped 240–640) |
 | `opacity` | `0.94` | Background opacity (clamped 0.4–1) |
-| `pinned` | `false` | Start pinned |
+| `pinned` | `false` | Start pinned on every screen |
 
 The file hot-reloads on save. `pinned` is only read at startup; pinning from the
 panel or IPC lasts for the session.
@@ -66,10 +72,12 @@ panel or IPC lasts for the session.
 ## IPC
 
 ```bash
-omarchy-shell jr.keycheat toggle    # pin / unpin
-omarchy-shell jr.keycheat pin
-omarchy-shell jr.keycheat unpin
-omarchy-shell jr.keycheat refresh   # re-read the bindings
+omarchy-shell jr.keycheat toggle     # pin / unpin the focused screen
+omarchy-shell jr.keycheat pin        # pin the focused screen
+omarchy-shell jr.keycheat unpin      # unpin the focused screen
+omarchy-shell jr.keycheat pinAll     # pin every screen
+omarchy-shell jr.keycheat unpinAll   # unpin every screen
+omarchy-shell jr.keycheat refresh    # re-read the bindings
 ```
 
 ## How it works
@@ -77,14 +85,18 @@ omarchy-shell jr.keycheat refresh   # re-read the bindings
 - `manifest.json` declares `kinds: ["service"]`; the shell mounts `Service.qml`
   at startup.
 - `Service.qml` reads the bindings once, parses them with `Binds.js`, and owns
-  the shared pin state. It listens for Hyprland's `configreloaded` event so a
-  binding edit shows up without a restart.
+  the per-screen pin state. It listens for Hyprland's `configreloaded` event so
+  a binding edit shows up without a restart.
 - `Panel.qml` is one `PanelWindow` per screen: anchored right/top/bottom, layer
-  `Top`, `keyboardFocus: None`, `exclusiveZone: 0`. The surface stays mapped and
-  only slides its card off-screen, so revealing it is instant.
+  `Top`, `exclusiveZone` equal to its width while pinned and `0` while hidden.
+  The surface stays mapped and only slides its card off-screen, so revealing it
+  is instant.
 - While hidden, the layer surface's input region (`mask`) is a thin strip at the
   edge, so clicks and scrolls reach the windows underneath. No screen space is
   reserved and tiled windows keep their width.
+- The search field filters in `Binds.js` (`filter`) and only asks for keyboard
+  focus (`WlrKeyboardFocus.OnDemand`) around the field; the rest of the panel is
+  read-only.
 
 ## Development
 
@@ -102,9 +114,9 @@ omarchy-shell shell rescanPlugins
 
 ## Limitations
 
-- One panel per screen, all sharing the same pin state.
-- No search field: the panel cannot take keyboard focus without stealing it from
-  the window you are working in.
+- One panel per screen, with the pin tracked per screen.
+- The search needs a click to take the keyboard; it cannot grab it from the
+  window you are working in.
 - Rows are read from `omarchy menu keybindings --print`; a bind without a
   description is not listed there either.
 

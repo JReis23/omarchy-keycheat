@@ -119,3 +119,23 @@ function count(sections) {
   for (var i = 0; i < sections.length; i++) total += sections[i].items.length
   return total
 }
+
+// Case-insensitive search over the modifier, the key and the description.
+// Groups left without a match disappear, so the list only shows what matched.
+function filter(sections, query) {
+  var needle = String(query || "").trim().toLowerCase()
+  if (needle === "") return sections
+
+  var out = []
+  for (var s = 0; s < sections.length; s++) {
+    var section = sections[s]
+    var items = []
+    for (var i = 0; i < section.items.length; i++) {
+      var item = section.items[i]
+      var haystack = String(section.mods + " " + item.key + " " + item.description).toLowerCase()
+      if (haystack.indexOf(needle) !== -1) items.push(item)
+    }
+    if (items.length > 0) out.push({ mods: section.mods, items: items })
+  }
+  return out
+}
