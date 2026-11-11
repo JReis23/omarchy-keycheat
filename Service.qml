@@ -37,6 +37,19 @@ Item {
   property bool failed: false
   property bool pendingReload: false
 
+  // Window border width from Hyprland, used to line the panel card up with the
+  // tiled windows. Read on start and after every config reload.
+  property int borderSize: 2
+
+  // Bumped by the `search` IPC so the panel on the focused screen reveals
+  // itself and puts the cursor in the search field.
+  property int searchRequest: 0
+  property string searchScreen: ""
+
+  // Bumped when another window becomes active, so a search that holds the
+  // keyboard gives it back instead of trapping it.
+  property int blurRequest: 0
+
   function numberOption(name, min, max, fallback) {
     var value = Number(root.options[name])
     if (!isFinite(value)) return fallback
@@ -114,6 +127,13 @@ Item {
     return Hyprland.focusedMonitor ? String(Hyprland.focusedMonitor.name || "") : ""
   }
 
+  function requestSearch() {
+    var name = root.focusedScreenName()
+    if (name === "") return
+    root.searchScreen = name
+    root.searchRequest += 1
+  }
+
   FileView {
     id: configFile
     path: root.configPath
@@ -156,7 +176,31 @@ Item {
   Connections {
     target: Hyprland
     function onRawEvent(event) {
-      if (String(event ? event.name : "") === "configreloaded") root.reload()
+      var name = String(event ? event.name : "")
+      if (name === "activewindow") {
+        root.blurRequest += 1
+        return
+      }
+      if (name !== "configreloaded") return
+      root.reload()
+      borderProcess.running = true
+    }
+  }
+
+  Process {
+    id: borderProcess
+    command: ["hyprctl", "-j", "getoption", "decoration:border_size"]
+
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try {
+          var value = Number(JSON.parse(text).int)
+          if (isFinite(value) && value >= 0) root.borderSize = Math.round(value)
+        } catch (error) {
+          // hyprctl missing / Hyprland not running — keep the previous value.
+        }
+      }
     }
   }
 
@@ -168,6 +212,7 @@ Item {
     function unpin(): void { root.setPinnedFor(root.focusedScreenName(), false) }
     function pinAll(): void { root.setPinnedAll(true) }
     function unpinAll(): void { root.setPinnedAll(false) }
+    function search(): void { root.requestSearch() }
     function refresh(): void { root.reload() }
   }
 
@@ -188,5 +233,6 @@ Item {
   Component.onCompleted: {
     root.applyOptions(configFile.text())
     root.reload()
+    borderProcess.running = true
   }
 }

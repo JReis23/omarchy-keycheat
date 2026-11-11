@@ -17,11 +17,12 @@ PanelWindow {
   color: "transparent"
   WlrLayershell.namespace: "jr-keycheat"
   WlrLayershell.layer: WlrLayer.Top
-  // Keyboard focus is only asked for around the search field, so the panel can
-  // sit open without swallowing what you type elsewhere. Hovering the field
-  // arms it before the click, which is when the compositor grants focus.
-  WlrLayershell.keyboardFocus: (window.searchFocused || window.searchArmed)
-    ? WlrKeyboardFocus.OnDemand
+  // The keyboard is only taken while a search is being typed in, and handed
+  // back as soon as the field loses it. `Exclusive` is what lets the panel take
+  // the keyboard on request (from the keybind); `OnDemand` only reacts to a
+  // click and does not grant focus to a programmatic request.
+  WlrLayershell.keyboardFocus: window.searchFocused
+    ? WlrKeyboardFocus.Exclusive
     : WlrKeyboardFocus.None
   // While hidden the surface reserves nothing and the card is off-screen, so
   // tiled windows keep their full width. While pinned it reserves its own width
@@ -39,8 +40,14 @@ PanelWindow {
   implicitWidth: window.plugin ? window.plugin.panelWidth : 360
   implicitHeight: 0
 
-  readonly property int gap: Style.space(6)
   readonly property int edgeDepth: Style.space(8)
+  // Hyprland leaves `gaps_out + border_size` between a tiled window and the
+  // screen edge. The card keeps the same inset on the top, right and bottom so
+  // its outline lines up with the windows. On the left it is flush with the
+  // space the exclusive zone reserved, which leaves the usual gap between the
+  // card and the neighbouring window.
+  readonly property int frameInset: Style.gapsOut * 2
+    + (window.plugin ? window.plugin.borderSize : 2)
   // The pin belongs to the screen this surface is on; `screen` is set by the
   // delegate in Service.qml and can be null for a moment while it is created.
   readonly property string screenName: window.screen ? String(window.screen.name || "") : ""
@@ -54,9 +61,9 @@ PanelWindow {
   // the shared bindings the service parsed.
   property string query: ""
   property bool searchFocused: false
-  // Set while the pointer is over the field, so the surface is already
-  // keyboard-interactive by the time the click lands.
-  property bool searchArmed: false
+  // Number of times the focus nudge below has fired, so a panel that cannot
+  // get the keyboard gives up instead of retrying forever.
+  property int focusAttempts: 0
   readonly property var visibleSections: window.plugin
     ? Binds.filter(window.plugin.sections, window.query)
     : []
@@ -65,6 +72,7 @@ PanelWindow {
   // Clicking anywhere in the field starts a search; the surface only becomes
   // keyboard-interactive from this point on.
   function startSearch() {
+    window.focusAttempts = 0
     window.searchFocused = true
     searchInput.forceActiveFocus()
   }
@@ -74,11 +82,27 @@ PanelWindow {
   function releaseSearchFocus() {
     searchInput.focus = false
     window.searchFocused = false
-    window.searchArmed = false
   }
 
   onQueryChanged: list.contentY = 0
   onRevealedChanged: if (!window.revealed) window.releaseSearchFocus()
+
+  // A keybind asks the panel on the focused screen to open with the field
+  // ready, so the whole sheet is reachable without the pointer.
+  Connections {
+    target: window.plugin
+
+    function onSearchRequestChanged() {
+      if (!window.plugin || window.plugin.searchScreen !== window.screenName) return
+      window.hoverRevealed = true
+      window.startSearch()
+    }
+
+    // Another window took the focus: stop holding the keyboard.
+    function onBlurRequestChanged() {
+      if (window.searchFocused) window.releaseSearchFocus()
+    }
+  }
 
   Commons.Translations {
     id: strings
@@ -149,7 +173,10 @@ PanelWindow {
     Rectangle {
       id: card
       anchors.fill: parent
-      anchors.margins: window.gap
+      anchors.leftMargin: 0
+      anchors.topMargin: window.frameInset
+      anchors.rightMargin: window.frameInset
+      anchors.bottomMargin: window.frameInset
       radius: Style.cornerRadius
       color: Util.alpha(Commons.Color.background, window.plugin ? window.plugin.panelOpacity : 0.94)
       border.width: Style.normalBorderWidth
@@ -262,10 +289,6 @@ PanelWindow {
         MouseArea {
           anchors.fill: parent
           onClicked: window.startSearch()
-        }
-
-        HoverHandler {
-          onHoveredChanged: window.searchArmed = hovered
         }
 
         Text {
@@ -423,13 +446,26 @@ PanelWindow {
 
   Timer {
     id: hideTimer
-    // Long enough to cross the gap between the edge strip and the card, and
-    // longer while a search is focused so drifting off the panel does not close
-    // it mid-word.
-    interval: window.searchFocused ? 1200 : 220
+    // Long enough to cross the gap between the edge strip and the card.
+    interval: 220
     onTriggered: {
-      if (bodyHover.hovered || edgeHover.hovered || window.pinned) return
+      // Never close under someone who is typing into the search field, even
+      // when the pointer is elsewhere (the keybind opens it that way).
+      if (bodyHover.hovered || edgeHover.hovered || window.pinned || window.searchFocused) return
       window.hoverRevealed = false
+    }
+  }
+
+  // The compositor hands the keyboard over a moment after the surface asks for
+  // it, so nudge Qt until the field really has focus. `activeFocus` stops the
+  // timer, and the attempt count stops it if the keyboard never arrives.
+  Timer {
+    interval: 40
+    repeat: true
+    running: window.searchFocused && !searchInput.activeFocus && window.focusAttempts < 30
+    onTriggered: {
+      window.focusAttempts += 1
+      searchInput.forceActiveFocus()
     }
   }
 }
