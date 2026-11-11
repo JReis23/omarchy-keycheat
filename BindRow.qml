@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 
 // One key and what it does. Hovering the row wraps the description instead of
 // eliding it, so a narrow panel still shows every word when asked.

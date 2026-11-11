@@ -11,10 +11,8 @@ import qs.Commons as Commons
 PanelWindow {
   id: window
 
-  required property var modelData
   property var plugin: null
 
-  screen: modelData
   color: "transparent"
   WlrLayershell.namespace: "jr-keycheat"
   WlrLayershell.layer: WlrLayer.Top
