@@ -1,0 +1,9 @@
+{
+  "panel.title": "Atalhos",
+  "panel.pin": "Fixar",
+  "panel.unpin": "Libertar",
+  "panel.close": "Fechar",
+  "panel.empty": "Nenhum atalho encontrado. Confirma que `omarchy menu keybindings --print` funciona.",
+  "panel.loading": "A ler os atalhos…",
+  "group.none": "Sem modificador"
+}
