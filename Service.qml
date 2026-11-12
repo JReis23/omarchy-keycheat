@@ -50,6 +50,13 @@ Item {
   // keyboard gives it back instead of trapping it.
   property int blurRequest: 0
 
+  // The screen whose panel holds the keyboard for a search, set by the panel
+  // itself. Empty when no search is open.
+  property string searchingScreen: ""
+  // Bumped by `leave` so that panel lets go of the keyboard.
+  property int leaveRequest: 0
+  property string leaveDirection: ""
+
   function numberOption(name, min, max, fallback) {
     var value = Number(root.options[name])
     if (!isFinite(value)) return fallback
@@ -134,6 +141,33 @@ Item {
     root.searchRequest += 1
   }
 
+  // A SUPER + arrow must still move focus away while the search field holds the
+  // keyboard. Hyprland refuses focus changes while a layer surface has it with
+  // `Exclusive`, so the panel lets go first and the move is dispatched once the
+  // compositor has seen that. With no search open there is nothing to release:
+  // the bind the user already has moves focus on its own.
+  function leave(direction) {
+    var dir = String(direction || "").toLowerCase()
+    if (["left", "right", "up", "down"].indexOf(dir) === -1) return
+    if (root.searchingScreen === "") return
+    root.leaveDirection = dir
+    root.leaveRequest += 1
+    leaveTimer.restart()
+  }
+
+  // Long enough for the panel's keyboard release to reach the compositor.
+  Timer {
+    id: leaveTimer
+    interval: 90
+    onTriggered: {
+      var dir = root.leaveDirection
+      root.leaveDirection = ""
+      if (dir === "") return
+      Quickshell.execDetached(["hyprctl", "dispatch",
+        'hl.dsp.focus({ direction = "' + dir + '" })'])
+    }
+  }
+
   FileView {
     id: configFile
     path: root.configPath
@@ -213,6 +247,7 @@ Item {
     function pinAll(): void { root.setPinnedAll(true) }
     function unpinAll(): void { root.setPinnedAll(false) }
     function search(): void { root.requestSearch() }
+    function leave(direction: string): void { root.leave(direction) }
     function refresh(): void { root.reload() }
   }
 

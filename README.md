@@ -62,6 +62,24 @@ close it: on a pinned screen that also unpins, exactly like **Hide**. While the
 field has the keyboard the panel takes it exclusively; `Escape` (twice if there
 is text) gives it back, and focusing another window does too.
 
+`SUPER + arrow` keeps working while the field has the keyboard, so a search never
+traps you on that screen. Hyprland refuses focus changes while a layer surface
+holds the keyboard exclusively, so the panel lets go first and the move is
+dispatched right after. That needs one extra bind per direction, in the same
+file, next to the search bind:
+
+```lua
+-- Sem descrição, para não aparecerem na lista de atalhos.
+for _, direction in ipairs({ "left", "right", "up", "down" }) do
+  o.bind("SUPER + " .. direction:upper(), nil,
+    "omarchy-shell jr.keycheat leave " .. direction, { non_consuming = true })
+end
+```
+
+They do not consume the key: the normal `SUPER + arrow` bind still runs, and with
+no search open these do nothing. An unpinned panel slides away when you leave it
+this way; a pinned one stays and keeps its reserved space.
+
 ## Configuration
 
 Optional overrides in `~/.config/omarchy/shell.json`, under a `keycheat` key:
@@ -94,6 +112,7 @@ omarchy-shell jr.keycheat unpin      # unpin the focused screen
 omarchy-shell jr.keycheat pinAll     # pin every screen
 omarchy-shell jr.keycheat unpinAll   # unpin every screen
 omarchy-shell jr.keycheat search     # open the focused screen's search, or close it
+omarchy-shell jr.keycheat leave DIR  # give the keyboard back, then focus DIR (left/right/up/down)
 omarchy-shell jr.keycheat refresh    # re-read the bindings
 ```
 
@@ -116,6 +135,10 @@ omarchy-shell jr.keycheat refresh    # re-read the bindings
   (`WlrKeyboardFocus.Exclusive`) is only taken while a search is active, because
   `OnDemand` cannot be granted to a programmatic request; a short retry timer
   nudges focus once the compositor hands the keyboard over.
+- Because `Exclusive` also makes Hyprland refuse every window focus change, the
+  `leave` IPC releases the keyboard and only then dispatches
+  `hl.dsp.focus({ direction = … })`. The `non_consuming` binds are what call it,
+  so the user's own `SUPER + arrow` bind keeps working when no search is open.
 
 ## Development
 
@@ -134,10 +157,13 @@ omarchy-shell shell rescanPlugins
 ## Limitations
 
 - One panel per screen, with the pin tracked per screen.
-- Layer surfaces cannot be reached with `SUPER + arrow`; use the `search` IPC
+- Layer surfaces cannot be selected with `SUPER + arrow`; use the `search` IPC
   (see Keybind above).
-- While a search holds the keyboard it is exclusive, so `Escape` or focusing
-  another window is what gives it back.
+- Leaving a search with `SUPER + arrow` needs the extra `leave` bind in
+  `~/.config/hypr/bindings.lua`; without it the arrow is swallowed while the
+  field holds the keyboard.
+- While a search holds the keyboard it is exclusive, so `Escape`, `SUPER + arrow`
+  or focusing another window is what gives it back.
 - Rows are read from `omarchy menu keybindings --print`; a bind without a
   description is not listed there either.
 

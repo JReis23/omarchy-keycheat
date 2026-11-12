@@ -18,9 +18,10 @@ PanelWindow {
   WlrLayershell.namespace: "jr-keycheat"
   WlrLayershell.layer: WlrLayer.Top
   // The keyboard is only taken while a search is being typed in, and handed
-  // back as soon as the field loses it. `Exclusive` is what lets the panel take
-  // the keyboard on request (from the keybind); `OnDemand` only reacts to a
-  // click and does not grant focus to a programmatic request.
+  // back as soon as the field loses it. `Exclusive` is the only mode that makes
+  // the compositor give a mapped surface the keyboard on request, so it is what
+  // makes the field typable. Hyprland then refuses to move focus to another
+  // window, so a SUPER + arrow asks the panel to let go first (see `leave`).
   WlrLayershell.keyboardFocus: window.searchFocused
     ? WlrKeyboardFocus.Exclusive
     : WlrKeyboardFocus.None
@@ -69,6 +70,15 @@ PanelWindow {
     : []
   readonly property int matchCount: Binds.count(window.visibleSections)
 
+  // Tell the service which panel holds the keyboard, so a SUPER + arrow only
+  // takes the detour below when there is a search to let go of.
+  onSearchFocusedChanged: {
+    if (!window.plugin) return
+    if (window.searchFocused) window.plugin.searchingScreen = window.screenName
+    else if (window.plugin.searchingScreen === window.screenName)
+      window.plugin.searchingScreen = ""
+  }
+
   // Clicking anywhere in the field starts a search; the surface only becomes
   // keyboard-interactive from this point on.
   function startSearch() {
@@ -109,6 +119,15 @@ PanelWindow {
     // Another window took the focus: stop holding the keyboard.
     function onBlurRequestChanged() {
       if (window.searchFocused) window.releaseSearchFocus()
+    }
+
+    // A SUPER + arrow bind asks the searching panel to let the compositor move
+    // focus. `Exclusive` is what blocks the move, so the keyboard goes back
+    // first; the service dispatches the focus change right after.
+    function onLeaveRequestChanged() {
+      if (!window.searchFocused) return
+      window.releaseSearchFocus()
+      if (!window.pinned) window.hoverRevealed = false
     }
   }
 
