@@ -31,13 +31,9 @@ omarchy plugin add https://github.com/JReis23/omarchy-keycheat --enable
 
 `omarchy plugin add` clones the repository into
 `~/.config/omarchy/plugins/jr.keycheat`, enables it, and `omarchy plugin update
-jr.keycheat` brings later commits in. To install by hand instead:
-
-```bash
-git clone https://github.com/JReis23/omarchy-keycheat ~/.config/omarchy/plugins/jr.keycheat
-omarchy-shell shell rescanPlugins
-omarchy plugin enable jr.keycheat
-```
+jr.keycheat` brings later commits in. If you prefer to install by hand, put the
+repository in that same folder, run `omarchy-shell shell rescanPlugins`, then
+`omarchy plugin enable jr.keycheat`.
 
 Enabling writes the plugin into `~/.config/omarchy/shell.json`. To turn it off
 without deleting it:
