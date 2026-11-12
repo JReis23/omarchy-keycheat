@@ -61,6 +61,9 @@ omarchy plugin remove jr.keycheat
   two end screens open on hover — the seams between screens never do, so moving
   the pointer from one monitor to the other no longer makes the panel flicker.
 - Move away: it slides back after a moment.
+- **`SUPER + F1`** opens the panel on the focused screen with the search field
+  ready (press it again to close it); **`SUPER + F2`** pins that screen. Both
+  need the binds from [Keybind](#keybind) below.
 - **Tabs** (under the search field): `Omarchy` shows the compositor's bindings,
   `Tmux` shows tmux's. The search only looks inside the tab you are on.
 - **Search** (top of the panel): click the field, or press the keybind below, and
@@ -81,17 +84,20 @@ its outline lines up with theirs instead of floating over the edge.
 
 Hyprland's directional focus (`SUPER + arrow`) only moves between windows; layer
 surfaces such as this panel are not in that list, so they cannot be selected
-that way. Bind the IPC command instead:
+that way. Bind the IPC commands instead:
 
 ```lua
-o.bind("SUPER + SHIFT + K", "Keycheat search", "omarchy-shell jr.keycheat search")
+o.bind("SUPER + F1", "Keycheat search", "omarchy-shell jr.keycheat search")
+o.bind("SUPER + F2", "Keycheat pin", "omarchy-shell jr.keycheat pin")
 ```
 
-Add it to `~/.config/hypr/bindings.lua`. The panel on the focused screen slides
-out with the search field ready, so you can type immediately. Press it again to
-close it: on a pinned screen that also unpins, exactly like **Hide**. While the
-field has the keyboard the panel takes it exclusively; `Escape` (twice if there
-is text) gives it back, and focusing another window does too.
+Add them to `~/.config/hypr/bindings.lua`. `SUPER + F1` slides the panel on the
+focused screen out with the search field ready, so you can type immediately.
+Press it again to close it: on a pinned screen that also unpins, exactly like
+**Hide**. While the field has the keyboard the panel takes it exclusively;
+`Escape` (twice if there is text) gives it back, and focusing another window
+does too. `SUPER + F2` pins that screen, or `omarchy-shell jr.keycheat toggle`
+if you would rather have one key that toggles it.
 
 `SUPER + arrow` keeps working while the field has the keyboard, so a search never
 traps you on that screen. Hyprland refuses focus changes while a layer surface
