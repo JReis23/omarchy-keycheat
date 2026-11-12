@@ -100,17 +100,90 @@ function group(entries) {
   mods.sort(function(a, b) { return groupRank(a) - groupRank(b) })
 
   var sections = []
-  for (var m = 0; m < mods.length; m++) {
-    var items = byMods[mods[m]].slice()
-    items.sort(function(a, b) {
-      var ka = String(a.key).toLowerCase()
-      var kb = String(b.key).toLowerCase()
-      if (ka < kb) return -1
-      if (ka > kb) return 1
-      return 0
+  for (var m = 0; m < mods.length; m++)
+    sections.push({ mods: mods[m], items: sortByKey(byMods[mods[m]]) })
+  return sections
+}
+
+function sortByKey(items) {
+  var out = items.slice()
+  out.sort(function(a, b) {
+    var ka = String(a.key).toLowerCase()
+    var kb = String(b.key).toLowerCase()
+    if (ka < kb) return -1
+    if (ka > kb) return 1
+    return 0
+  })
+  return out
+}
+
+// `omarchy-menu-tmux-keybindings --print` uses the same shape as the Hyprland
+// listing, with PREFIX and COPY MODE standing in for the modifier:
+//
+//   PREFIX                            → CTRL + SPACE / CTRL + B
+//   PREFIX + %                        → Split window horizontally
+//   PREFIX + CTRL + SPACE             → Send prefix
+//   ALT + LEFT                        → Previous window
+//
+// The lone PREFIX line names the keys that open the prefix table, so it becomes
+// a row of its own instead of a group with no modifier.
+function parseTmux(raw) {
+  var lines = String(raw || "").split("\n")
+  var out = []
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i]
+    var arrow = line.indexOf("\u2192")
+    if (arrow === -1) continue
+    var description = line.slice(arrow + 1).trim()
+    if (description === "") continue
+
+    var left = line.slice(0, arrow).trim()
+    if (left === "") continue
+    var cut = left.lastIndexOf(" + ")
+    if (cut === -1) {
+      if (left === "PREFIX") out.push({ mods: "PREFIX", key: "prefix", description: description })
+      else out.push({ mods: "", key: left, description: description })
+      continue
+    }
+    out.push({
+      mods: left.slice(0, cut).trim(),
+      key: left.slice(cut + 3).trim(),
+      description: description
     })
-    sections.push({ mods: mods[m], items: items })
   }
+  return out
+}
+
+// The prefix table first, then its own modifier combos, then the root-table
+// binds, and the copy-mode ones last.
+function tmuxRank(mods) {
+  if (mods === "PREFIX") return 0
+  if (mods.indexOf("PREFIX") === 0) return 1
+  if (mods.indexOf("COPY MODE") === 0) return 3
+  return 2
+}
+
+function groupTmux(entries) {
+  var byMods = {}
+  for (var i = 0; i < entries.length; i++) {
+    var entry = entries[i]
+    if (!byMods[entry.mods]) byMods[entry.mods] = []
+    byMods[entry.mods].push(entry)
+  }
+
+  var mods = Object.keys(byMods)
+  mods.sort(function(a, b) {
+    var ra = tmuxRank(a)
+    var rb = tmuxRank(b)
+    if (ra !== rb) return ra - rb
+    if (a < b) return -1
+    if (a > b) return 1
+    return 0
+  })
+
+  var sections = []
+  for (var m = 0; m < mods.length; m++)
+    sections.push({ mods: mods[m], items: sortByKey(byMods[mods[m]]) })
   return sections
 }
 

@@ -62,13 +62,23 @@ PanelWindow {
   // the shared bindings the service parsed.
   property string query: ""
   property bool searchFocused: false
+  // Which listing the panel shows: the compositor's bindings or tmux's. Both
+  // come from Omarchy's own annotated listings and render the same way.
+  property string tab: "omarchy"
   // Number of times the focus nudge below has fired, so a panel that cannot
   // get the keyboard gives up instead of retrying forever.
   property int focusAttempts: 0
-  readonly property var visibleSections: window.plugin
-    ? Binds.filter(window.plugin.sections, window.query)
-    : []
+  readonly property var activeSections: {
+    if (!window.plugin) return []
+    return window.tab === "tmux" ? window.plugin.tmuxSections : window.plugin.sections
+  }
+  readonly property bool activeLoaded: window.plugin
+    ? (window.tab === "tmux" ? window.plugin.tmuxLoaded : window.plugin.loaded)
+    : false
+  readonly property var visibleSections: Binds.filter(window.activeSections, window.query)
   readonly property int matchCount: Binds.count(window.visibleSections)
+
+  onTabChanged: list.contentY = 0
 
   // Tell the service which panel holds the keyboard, so a SUPER + arrow only
   // takes the detour below when there is a search to let go of.
@@ -384,9 +394,57 @@ PanelWindow {
         }
       }
 
+      // Which listing the panel shows. Both come from Omarchy's own annotated
+      // listings, so the two tabs render exactly the same way.
+      Row {
+        id: tabs
+        anchors.top: searchBox.bottom
+        anchors.topMargin: Style.spacing.md
+        anchors.left: parent.left
+        anchors.leftMargin: Style.spacing.xxl
+        spacing: Style.spacing.xs
+
+        Repeater {
+          model: [
+            { id: "omarchy", label: strings.t("tab.omarchy") },
+            { id: "tmux", label: strings.t("tab.tmux") }
+          ]
+
+          delegate: Rectangle {
+            id: tabPill
+            required property var modelData
+            readonly property bool active: window.tab === modelData.id
+
+            width: tabLabel.implicitWidth + Style.spacing.md * 2
+            height: Math.round(Style.spacing.controlHeight * 0.82)
+            radius: Style.cornerRadius
+            color: tabPill.active ? Style.hoverFill : "transparent"
+            border.width: Style.normalBorderWidth
+            border.color: tabPill.active ? Commons.Color.accent : "transparent"
+
+            Text {
+              id: tabLabel
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: tabPill.modelData.label
+              color: tabPill.active ? Commons.Color.accent : Commons.Color.muted
+              font.family: Style.fontFamily
+              font.pixelSize: Style.fontPx(0.92)
+              font.bold: tabPill.active
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: window.tab = tabPill.modelData.id
+            }
+          }
+        }
+      }
+
       Rectangle {
         id: rule
-        anchors.top: searchBox.bottom
+        anchors.top: tabs.bottom
         anchors.topMargin: Style.spacing.md
         anchors.left: parent.left
         anchors.right: parent.right
@@ -455,15 +513,19 @@ PanelWindow {
       Text {
         anchors.centerIn: parent
         width: parent.width - Style.spacing.xxl * 2
-        visible: !window.loaded || (window.query !== "" && window.matchCount === 0)
+        visible: !window.activeLoaded || (window.query !== "" && window.matchCount === 0)
         textFormat: Text.PlainText
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.Wrap
-        text: !window.loaded
-          ? (window.plugin && window.plugin.failed
-              ? strings.t("panel.empty")
-              : strings.t("panel.loading"))
-          : strings.t("panel.noResults")
+        text: window.activeLoaded
+          ? strings.t("panel.noResults")
+          : window.tab === "tmux"
+            ? (window.plugin && window.plugin.tmuxFailed
+                ? strings.t("panel.tmuxMissing")
+                : strings.t("panel.loading"))
+            : (window.plugin && window.plugin.failed
+                ? strings.t("panel.empty")
+                : strings.t("panel.loading"))
         color: Commons.Color.muted
         font.family: Style.fontFamily
         font.pixelSize: Style.fontPx(0.95)

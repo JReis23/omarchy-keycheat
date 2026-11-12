@@ -4,9 +4,11 @@ An Omarchy shell plugin that keeps the keybinding cheat sheet at the right edge
 of the screen. It stays hidden until the pointer touches the edge, then slides
 out, themed by the running Omarchy theme. Pin it to keep it open.
 
-It reads `omarchy menu keybindings --print`, so it shows every binding the
-`SUPER + K` panel shows, including your own additions in
-`~/.config/hypr/bindings.lua`, and reloads when Hyprland reloads its config.
+Two tabs share the panel: **Omarchy** (the compositor's bindings) and **Tmux**.
+It reads `omarchy menu keybindings --print` and
+`omarchy-menu-tmux-keybindings --print`, so it shows every binding those menus
+show, including your own additions in `~/.config/hypr/bindings.lua` and
+`~/.config/tmux/tmux.conf`, and reloads when either changes.
 
 ## Requirements
 
@@ -32,6 +34,8 @@ omarchy plugin disable jr.keycheat
 
 - Move the pointer to the right edge of the screen: the panel slides out.
 - Move away: it slides back after a moment.
+- **Tabs** (under the search field): `Omarchy` shows the compositor's bindings,
+  `Tmux` shows tmux's. The search only looks inside the tab you are on.
 - **Search** (top of the panel): click the field, or press the keybind below, and
   type. It filters on the modifier, the key and the description. `Escape` clears
   the text, then closes the panel. The query is kept if the panel hides, so
@@ -124,6 +128,11 @@ omarchy-shell jr.keycheat refresh    # re-read the bindings
   the per-screen pin state. It listens for Hyprland's `configreloaded` event so
   a binding edit shows up without a restart, and for `activewindow` so a search
   stops holding the keyboard when another window takes the focus.
+- The Tmux tab runs `omarchy-menu-tmux-keybindings --print`, which parses the
+  config in a throwaway tmux server, and watches `$TMUX_CONF` (default
+  `~/.config/tmux/tmux.conf`) so an edit refreshes the tab. It reuses the same
+  row renderer: `Binds.parseTmux` and `Binds.groupTmux` only differ in ordering,
+  with the prefix table first, the root-table binds next and copy mode last.
 - `Panel.qml` is one `PanelWindow` per screen: anchored right/top/bottom, layer
   `Top`, `exclusiveZone` equal to its width while pinned and `0` while hidden.
   The surface stays mapped and only slides its card off-screen, so revealing it
@@ -166,6 +175,10 @@ omarchy-shell shell rescanPlugins
   or focusing another window is what gives it back.
 - Rows are read from `omarchy menu keybindings --print`; a bind without a
   description is not listed there either.
+- The Tmux tab shows what `omarchy-menu-tmux-keybindings --print` shows, so a
+  tmux bind needs a note (`bind -N "…"`) to be listed, and binds from plugins or
+  a live server's runtime changes are not picked up — only what the config file
+  declares.
 
 ## License
 

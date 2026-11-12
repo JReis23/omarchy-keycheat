@@ -6,7 +6,8 @@ import assert from "node:assert/strict"
 // node does not. Evaluating the body here tests the exact code the panel runs.
 const source = readFileSync(new URL("../Binds.js", import.meta.url), "utf8")
   .replace(/^\.pragma library\s*$/m, "")
-const Binds = new Function(source + "\nreturn { parse, group, count, filter, normalizeMods, splitCombo }")()
+const Binds = new Function(source +
+  "\nreturn { parse, group, groupTmux, parseTmux, count, filter, normalizeMods, splitCombo }")()
 
 const SAMPLE = [
   "SUPER + K                           → Keybindings",
@@ -106,6 +107,38 @@ test("filter returns everything for an empty query", () => {
   const sections = Binds.group(Binds.parse(SAMPLE))
   assert.equal(Binds.filter(sections, "   "), sections)
   assert.equal(Binds.count(Binds.filter(sections, "")), Binds.count(sections))
+})
+
+const TMUX_SAMPLE = [
+  "PREFIX                           → CTRL + SPACE / CTRL + B",
+  "PREFIX + %                       → Split window horizontally",
+  "PREFIX + CTRL + SPACE            → Send prefix",
+  "ALT + LEFT                       → Previous window",
+  "COPY MODE + y                    → Copy selection",
+  ""
+].join("\n")
+
+test("parseTmux turns the prefix line into its own row", () => {
+  const entries = Binds.parseTmux(TMUX_SAMPLE)
+  assert.equal(entries.length, 5)
+  assert.deepEqual(entries[0], { mods: "PREFIX", key: "prefix", description: "CTRL + SPACE / CTRL + B" })
+  assert.deepEqual(entries[1], { mods: "PREFIX", key: "%", description: "Split window horizontally" })
+  assert.deepEqual(entries[2], { mods: "PREFIX + CTRL", key: "SPACE", description: "Send prefix" })
+  assert.deepEqual(entries[3], { mods: "ALT", key: "LEFT", description: "Previous window" })
+  assert.deepEqual(entries[4], { mods: "COPY MODE", key: "y", description: "Copy selection" })
+})
+
+test("groupTmux puts PREFIX first and copy mode last", () => {
+  const sections = Binds.groupTmux(Binds.parseTmux(TMUX_SAMPLE))
+  assert.deepEqual(sections.map((section) => section.mods), ["PREFIX", "PREFIX + CTRL", "ALT", "COPY MODE"])
+  assert.deepEqual(sections[0].items.map((item) => item.key), ["%", "prefix"])
+})
+
+test("filter works on tmux rows too", () => {
+  const sections = Binds.groupTmux(Binds.parseTmux(TMUX_SAMPLE))
+  assert.equal(Binds.count(Binds.filter(sections, "split")), 1)
+  // "prefix" matches the group name, so every row in both prefix groups counts.
+  assert.equal(Binds.count(Binds.filter(sections, "prefix")), 3)
 })
 
 test("filter returns nothing when no row matches", () => {

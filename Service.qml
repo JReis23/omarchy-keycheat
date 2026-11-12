@@ -37,6 +37,20 @@ Item {
   property bool failed: false
   property bool pendingReload: false
 
+  // Tmux bindings, from Omarchy's own annotated listing: same shape as the
+  // Hyprland one, so the panel renders both with the same code.
+  property var tmuxSections: []
+  property bool tmuxLoaded: false
+  property bool tmuxFailed: false
+  property bool tmuxPending: false
+  readonly property string tmuxConfigPath: {
+    var override = Quickshell.env("TMUX_CONF")
+    if (override) return override
+    var base = Quickshell.env("XDG_CONFIG_HOME")
+    if (!base) base = Quickshell.env("HOME") + "/.config"
+    return base + "/tmux/tmux.conf"
+  }
+
   // Window border width from Hyprland, used to line the panel card up with the
   // tiled windows. Read on start and after every config reload.
   property int borderSize: 2
@@ -85,15 +99,27 @@ Item {
   function reload() {
     if (bindsProcess.running) {
       pendingReload = true
+    } else {
+      bindsProcess.running = true
+    }
+    root.reloadTmux()
+  }
+
+  // Tmux bindings change when the user edits their config, not when Hyprland
+  // reloads, so this has its own trigger.
+  function reloadTmux() {
+    if (tmuxProcess.running) {
+      tmuxPending = true
       return
     }
-    bindsProcess.running = true
+    tmuxProcess.running = true
   }
 
   // Called when a panel is revealed, so a shell that started before Hyprland
   // was ready fills in on first use rather than staying empty.
   function ensureLoaded() {
     if (!loaded && !failed) reload()
+    else if (!tmuxLoaded && !tmuxFailed) root.reloadTmux()
   }
 
   // Pinning is per screen: pinning the panel on one monitor must not take the
@@ -202,6 +228,38 @@ Item {
       if (!root.pendingReload) return
       root.pendingReload = false
       Qt.callLater(root.reload)
+    }
+  }
+
+  // Tmux runs its own config parse, so watching the file is what keeps this
+  // fresh; Hyprland's reloads say nothing about it.
+  FileView {
+    path: root.tmuxConfigPath
+    watchChanges: true
+    blockLoading: true
+    printErrors: false
+    onFileChanged: root.reloadTmux()
+  }
+
+  Process {
+    id: tmuxProcess
+    command: ["omarchy-menu-tmux-keybindings", "--print"]
+
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var entries = Binds.parseTmux(text)
+        root.tmuxSections = Binds.groupTmux(entries)
+        root.tmuxLoaded = entries.length > 0
+        root.tmuxFailed = entries.length === 0
+      }
+    }
+
+    onExited: {
+      if (!root.tmuxLoaded) root.tmuxFailed = true
+      if (!root.tmuxPending) return
+      root.tmuxPending = false
+      Qt.callLater(root.reloadTmux)
     }
   }
 
