@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "jr",
   "license": "MIT",
-  "description": "Keybinding cheat sheet that waits at the right edge of the screen and slides out on hover.",
+  "description": "Keybinding cheat sheet that waits at the outer edge of the screen and slides out on hover.",
   "kinds": ["service"],
   "entryPoints": {
     "service": "Service.qml"

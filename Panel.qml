@@ -35,7 +35,8 @@ PanelWindow {
   anchors {
     top: true
     bottom: true
-    right: true
+    left: window.side === "left"
+    right: window.side !== "left"
   }
 
   implicitWidth: window.plugin ? window.plugin.panelWidth : 360
@@ -43,15 +44,23 @@ PanelWindow {
 
   readonly property int edgeDepth: Style.space(8)
   // Hyprland leaves `gaps_out + border_size` between a tiled window and the
-  // screen edge. The card keeps the same inset on the top, right and bottom so
-  // its outline lines up with the windows. On the left it is flush with the
-  // space the exclusive zone reserved, which leaves the usual gap between the
-  // card and the neighbouring window.
+  // screen edge. The card keeps the same inset on its outer side and on the top
+  // and bottom, so its outline lines up with the windows. On the inner side it
+  // is flush with the space the exclusive zone reserved, which leaves the usual
+  // gap between the card and the neighbouring window.
   readonly property int frameInset: Style.gapsOut * 2
     + (window.plugin ? window.plugin.borderSize : 2)
   // The pin belongs to the screen this surface is on; `screen` is set by the
   // delegate in Service.qml and can be null for a moment while it is created.
   readonly property string screenName: window.screen ? String(window.screen.name || "") : ""
+  // Which side of its screen this panel sits on. Two side-by-side monitors open
+  // outwards, one on each side, and a screen with neighbours on both sides has
+  // no hover strip at all — the desktop edges are the only ones that reveal, so
+  // crossing between monitors does not make the panel flicker.
+  readonly property var screenLayout: window.plugin && window.plugin.screenLayout
+    ? window.plugin.screenLayout[window.screenName] : null
+  readonly property string side: window.screenLayout ? window.screenLayout.side : "right"
+  readonly property bool hoverEdge: window.screenLayout ? window.screenLayout.hover : true
   readonly property bool pinned: window.plugin ? window.plugin.isPinned(window.screenName) : false
   readonly property bool loaded: window.plugin ? window.plugin.loaded : false
 
@@ -148,14 +157,17 @@ PanelWindow {
 
   mask: Region {
     item: window.revealed ? body : null
-    Region { item: edgeTrigger }
+    Region { item: window.hoverEdge ? edgeTrigger : null }
   }
 
   // The strip that brings the panel back. It is the whole input region while
   // the panel is hidden, so everything else falls through to the windows below.
+  // Only the outside edges of the desktop get one: a screen sandwiched between
+  // two others must not grab the pointer as it crosses.
   Item {
     id: edgeTrigger
-    x: window.width - width
+    visible: window.hoverEdge
+    x: window.side === "left" ? 0 : window.width - width
     y: 0
     width: window.edgeDepth
     height: window.height
@@ -176,8 +188,10 @@ PanelWindow {
   // A sliver of accent at the edge, so the panel is discoverable while hidden.
   Rectangle {
     id: edgeTab
-    anchors.right: parent.right
+    anchors.left: window.side === "left" ? parent.left : undefined
+    anchors.right: window.side === "left" ? undefined : parent.right
     anchors.verticalCenter: parent.verticalCenter
+    visible: window.hoverEdge
     width: Style.space(3)
     height: Math.round(window.height * 0.22)
     radius: width / 2
@@ -193,7 +207,7 @@ PanelWindow {
     id: body
     width: window.width
     height: window.height
-    x: window.revealed ? 0 : window.width
+    x: window.revealed ? 0 : (window.side === "left" ? -window.width : window.width)
 
     Behavior on x {
       NumberAnimation {
@@ -210,9 +224,9 @@ PanelWindow {
     Rectangle {
       id: card
       anchors.fill: parent
-      anchors.leftMargin: 0
+      anchors.leftMargin: window.side === "left" ? window.frameInset : 0
       anchors.topMargin: window.frameInset
-      anchors.rightMargin: window.frameInset
+      anchors.rightMargin: window.side === "left" ? 0 : window.frameInset
       anchors.bottomMargin: window.frameInset
       radius: Style.cornerRadius
       color: Util.alpha(Commons.Color.background, window.plugin ? window.plugin.panelOpacity : 0.94)

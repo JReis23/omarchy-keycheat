@@ -4,6 +4,7 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import qs.Commons
 import "Binds.js" as Binds
+import "Screens.js" as Screens
 
 // Feeds every screen's cheat sheet. The window itself lives in Panel.qml; this
 // service only reads the bindings and owns the pin state the panels share.
@@ -54,6 +55,23 @@ Item {
   // Window border width from Hyprland, used to line the panel card up with the
   // tiled windows. Read on start and after every config reload.
   property int borderSize: 2
+
+  // Plain copy of the screen geometry, so the layout below re-runs whenever a
+  // monitor is plugged in, unplugged or moved.
+  readonly property var screenGeometries: {
+    var out = []
+    for (var i = 0; i < Quickshell.screens.length; i++) {
+      var s = Quickshell.screens[i]
+      out.push({ name: s.name, x: s.x, y: s.y, width: s.width, height: s.height })
+    }
+    return out
+  }
+
+  // Which edge each screen's panel belongs to, and whether its hidden edge strip
+  // exists at all. Only the outside of the desktop reveals on hover, so moving
+  // the pointer between two monitors no longer grazes a strip and makes the
+  // panel flicker.
+  readonly property var screenLayout: Screens.layout(root.screenGeometries)
 
   // Bumped by the `search` IPC so the panel on the focused screen reveals
   // itself and puts the cursor in the search field.

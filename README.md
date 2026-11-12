@@ -33,6 +33,11 @@ omarchy plugin disable jr.keycheat
 ## Usage
 
 - Move the pointer to the right edge of the screen: the panel slides out.
+  With two monitors side by side it opens outwards instead: the left screen's
+  panel comes out of its left edge, the right screen's out of its right edge.
+  Two stacked screens both keep it on the right, and with three or more only the
+  two end screens open on hover — the seams between screens never do, so moving
+  the pointer from one monitor to the other no longer makes the panel flicker.
 - Move away: it slides back after a moment.
 - **Tabs** (under the search field): `Omarchy` shows the compositor's bindings,
   `Tmux` shows tmux's. The search only looks inside the tab you are on.
@@ -133,10 +138,15 @@ omarchy-shell jr.keycheat refresh    # re-read the bindings
   `~/.config/tmux/tmux.conf`) so an edit refreshes the tab. It reuses the same
   row renderer: `Binds.parseTmux` and `Binds.groupTmux` only differ in ordering,
   with the prefix table first, the root-table binds next and copy mode last.
-- `Panel.qml` is one `PanelWindow` per screen: anchored right/top/bottom, layer
-  `Top`, `exclusiveZone` equal to its width while pinned and `0` while hidden.
-  The surface stays mapped and only slides its card off-screen, so revealing it
-  is instant.
+- `Panel.qml` is one `PanelWindow` per screen: anchored top/bottom and to the
+  side `Screens.js` picks for it, layer `Top`, `exclusiveZone` equal to its
+  width while pinned and `0` while hidden. The surface stays mapped and only
+  slides its card off-screen, so revealing it is instant.
+- `Screens.js` turns the monitor geometry into a side and a flag per screen: a
+  screen at the left of the desktop with another one to its right faces left,
+  every other one faces right, and only the two ends of the desktop get a hover
+  strip. A screen in the middle still exists for the keybind, the IPC and the
+  pin, it just does not grab the pointer.
 - While hidden, the layer surface's input region (`mask`) is a thin strip at the
   edge, so clicks and scrolls reach the windows underneath. No screen space is
   reserved and tiled windows keep their width.
@@ -166,6 +176,12 @@ omarchy-shell shell rescanPlugins
 ## Limitations
 
 - One panel per screen, with the pin tracked per screen.
+- A screen with neighbours on both sides has no hover strip: reach it with the
+  keybind, the `search` IPC or the pin, or it would open whenever the pointer
+  crossed the seam.
+- Two side-by-side monitors open outwards, so the panel on the left screen is on
+  the left. Stacked screens, and the ends of a three-screen desktop, keep it on
+  the right.
 - Layer surfaces cannot be selected with `SUPER + arrow`; use the `search` IPC
   (see Keybind above).
 - Leaving a search with `SUPER + arrow` needs the extra `leave` bind in
