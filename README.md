@@ -10,24 +10,46 @@ It reads `omarchy menu keybindings --print` and
 show, including your own additions in `~/.config/hypr/bindings.lua` and
 `~/.config/tmux/tmux.conf`, and reloads when either changes.
 
+![The Keycheat panel on the right edge of the desktop](preview.png)
+
 ## Requirements
 
 - Omarchy Quattro (the shell plugin system and `omarchy-shell` IPC)
 - Nothing else: the panel runs inside the existing `omarchy-shell` process.
 
+The two listings come from commands Omarchy already ships, so there is nothing
+extra to install:
+
+- `omarchy menu keybindings --print` — the compositor's bindings
+- `omarchy-menu-tmux-keybindings --print` — the tmux bindings
+
 ## Install
 
 ```bash
-cp -r ~/Work/keycheat ~/.config/omarchy/plugins/jr.keycheat
+omarchy plugin add https://github.com/JReis23/omarchy-keycheat --enable
+```
+
+`omarchy plugin add` clones the repository into
+`~/.config/omarchy/plugins/jr.keycheat`, enables it, and `omarchy plugin update
+jr.keycheat` brings later commits in. To install by hand instead:
+
+```bash
+git clone https://github.com/JReis23/omarchy-keycheat ~/.config/omarchy/plugins/jr.keycheat
 omarchy-shell shell rescanPlugins
 omarchy plugin enable jr.keycheat
 ```
 
 Enabling writes the plugin into `~/.config/omarchy/shell.json`. To turn it off
-again without deleting it:
+without deleting it:
 
 ```bash
 omarchy plugin disable jr.keycheat
+```
+
+To remove it completely (this also unpins any screen it was pinned to):
+
+```bash
+omarchy plugin remove jr.keycheat
 ```
 
 ## Usage

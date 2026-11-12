@@ -3,7 +3,7 @@
   "id": "jr.keycheat",
   "name": "Keycheat",
   "version": "0.1.0",
-  "author": "jr",
+  "author": "JReis23",
   "license": "MIT",
   "description": "Keybinding cheat sheet that waits at the outer edge of the screen and slides out on hover.",
   "kinds": ["service"],
