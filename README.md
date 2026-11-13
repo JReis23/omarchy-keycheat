@@ -42,7 +42,8 @@ without deleting it:
 omarchy plugin disable jr.keycheat
 ```
 
-To remove it completely (this also unpins any screen it was pinned to):
+To remove it completely (the panel disappears and its reserved space goes with
+it):
 
 ```bash
 omarchy plugin remove jr.keycheat
@@ -66,9 +67,15 @@ omarchy plugin remove jr.keycheat
   type. It filters on the modifier, the key and the description. `Escape` clears
   the text, then closes the panel. The query is kept if the panel hides, so
   hovering it again brings the same results back.
+- **Keyboard**, while the field has the keyboard: `↑`/`↓` scroll one row,
+  `PageUp`/`PageDown` a screenful, `Home`/`End` jump to either end, and
+  `Tab`/`Shift + Tab` switch between the Omarchy and Tmux tabs without leaving
+  the field. The count beside the tabs says how many of the listings match, and
+  a thin bar on the right shows where you are.
 - **Pin**: keeps the panel open **on that screen only** and reserves its width,
   so the tiling layout makes room instead of covering the windows. Other
-  screens are untouched.
+  screens are untouched. The pin is remembered per screen, so it survives
+  `omarchy restart shell` and a logout.
 - **Hide**: unpins that screen and lets the panel slide away.
 
 Hovering a row wraps its description instead of truncating it.
@@ -131,10 +138,18 @@ Optional overrides in `~/.config/omarchy/shell.json`, under a `keycheat` key:
 |---|---|---|
 | `width` | `360` | Panel width in pixels (clamped 240–640) |
 | `opacity` | `0.94` | Background opacity (clamped 0.4–1) |
-| `pinned` | `false` | Start pinned on every screen |
+| `pinned` | `false` | Pin every screen on the first run |
 
-The file hot-reloads on save. `pinned` is only read at startup; pinning from the
-panel or IPC lasts for the session.
+The file hot-reloads on save. `pinned` is only a first-run default: from then on
+the panel's own pin state wins and is stored per screen in
+`~/.local/state/omarchy/keycheat.json`:
+
+```json
+{ "screens": ["DP-3"] }
+```
+
+Delete that file to fall back to the config value. The plugin never writes to
+`shell.json`.
 
 ## IPC
 
@@ -154,9 +169,11 @@ omarchy-shell jr.keycheat refresh    # re-read the bindings
 - `manifest.json` declares `kinds: ["service"]`; the shell mounts `Service.qml`
   at startup.
 - `Service.qml` reads the bindings once, parses them with `Binds.js`, and owns
-  the per-screen pin state. It listens for Hyprland's `configreloaded` event so
-  a binding edit shows up without a restart, and for `activewindow` so a search
-  stops holding the keyboard when another window takes the focus.
+  the per-screen pin state, persisted in
+  `~/.local/state/omarchy/keycheat.json` so a shell restart does not lose it. It
+  listens for Hyprland's `configreloaded` event so a binding edit shows up
+  without a restart, and for `activewindow` so a search stops holding the
+  keyboard when another window takes the focus.
 - The Tmux tab runs `omarchy-menu-tmux-keybindings --print`, which parses the
   config in a throwaway tmux server, and watches `$TMUX_CONF` (default
   `~/.config/tmux/tmux.conf`) so an edit refreshes the tab. It reuses the same
@@ -186,9 +203,12 @@ omarchy-shell jr.keycheat refresh    # re-read the bindings
 ## Development
 
 ```bash
-node --test test/                     # Binds.js parsing and grouping
-omarchy plugin validate .             # manifest against the shell's schema
+node --test test/                     # parsing, grouping, screen layout, manifest
+omarchy plugin validate .             # the shell's own manifest check
 ```
+
+The GitHub Actions workflow runs `node --test test/` on every push and pull
+request, including the manifest checks that mirror the validator.
 
 Saving a file under `~/.config/omarchy/plugins/jr.keycheat/` reloads the plugin.
 If a change does not apply, force it:
@@ -196,6 +216,57 @@ If a change does not apply, force it:
 ```bash
 omarchy-shell shell rescanPlugins
 ```
+
+## Troubleshooting
+
+**The panel never appears.** Check that the plugin is enabled and that the
+listing works:
+
+```bash
+omarchy plugin list | grep keycheat
+omarchy menu keybindings --print | head
+```
+
+Then move the pointer to the *outside* edge of the desktop — with two monitors,
+the left screen's left edge and the right screen's right edge. The seam between
+screens deliberately does nothing. After a QML change, `omarchy restart shell`;
+errors land in `journalctl --user -t omarchy-shell`.
+
+**`SUPER + F1` or `SUPER + F2` does nothing.** They are binds you add yourself
+(see [Keybind](#keybind)). Confirm `~/.config/hypr/bindings.lua` has them, run
+`hyprctl reload`, and try the IPC directly:
+
+```bash
+omarchy-shell jr.keycheat search
+```
+
+If that works, the bind is the problem, not the plugin.
+
+**`SUPER + arrow` does not leave the search.** The four `non_consuming` binds
+must be present and Hyprland must accept Lua dispatchers (0.56+). Test one
+directly:
+
+```bash
+hyprctl dispatch 'hl.dsp.focus({ direction = "left" })'
+```
+
+Without them the arrow stays with the field; `Escape` still gives the keyboard
+back.
+
+**The Tmux tab is empty.** `omarchy-menu-tmux-keybindings --print` only lists
+binds your config declares, because Omarchy's helper removes tmux's stock binds.
+A config with no `bind` lines has nothing to show. It also needs `tmux`
+installed.
+
+**The pin came back after a restart, or did not stick.** The config `pinned`
+value only seeds the first run. From then on
+`~/.local/state/omarchy/keycheat.json` is authoritative; delete it to go back to
+the config value. Removing the plugin does not delete it, so a reinstall
+restores the same pins.
+
+**Search finds nothing.** Matching is a plain case-insensitive substring over
+the modifier, the key and the description, in the current tab only. `SUPER` is
+spelled `SUPER`, not `Win` or `Meta`.
 
 ## Limitations
 

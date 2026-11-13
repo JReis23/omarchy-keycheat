@@ -86,6 +86,9 @@ PanelWindow {
     : false
   readonly property var visibleSections: Binds.filter(window.activeSections, window.query)
   readonly property int matchCount: Binds.count(window.visibleSections)
+  readonly property int totalCount: Binds.count(window.activeSections)
+  // One row plus the gap between rows, so an arrow key moves exactly one line.
+  readonly property int rowStep: Math.round(Style.fontPx(0.95) * 1.5) + Style.spacing.sm
 
   onTabChanged: list.contentY = 0
 
@@ -111,6 +114,22 @@ PanelWindow {
   function releaseSearchFocus() {
     searchInput.focus = false
     window.searchFocused = false
+  }
+
+  // The list is the point of the panel, so it scrolls from the keyboard while
+  // the search field holds it: the field is single-line, so the arrows are free.
+  function scrollList(delta) {
+    var maxY = Math.max(0, list.contentHeight - list.height)
+    list.contentY = Math.max(0, Math.min(maxY, list.contentY + delta))
+  }
+
+  // Tab and Shift + Tab cycle the two listings without leaving the field, so
+  // typing a query and switching source never needs the pointer.
+  function switchTab(step) {
+    var ids = ["omarchy", "tmux"]
+    var index = ids.indexOf(window.tab)
+    if (index === -1) index = 0
+    window.tab = ids[(index + step + ids.length) % ids.length]
   }
 
   onQueryChanged: list.contentY = 0
@@ -368,6 +387,9 @@ PanelWindow {
           font.pixelSize: Style.fontPx(0.95)
           clip: true
           selectByMouse: true
+          // Handle navigation before the field's own key handling: a single-line
+          // TextInput would otherwise swallow Home/End and Tab.
+          Keys.priority: Keys.BeforeItem
           onTextChanged: window.query = text
           onActiveFocusChanged: {
             if (activeFocus) return
@@ -381,6 +403,42 @@ PanelWindow {
             if (searchInput.text !== "") searchInput.text = ""
             else if (!window.pinned) window.hoverRevealed = false
             else window.releaseSearchFocus()
+          }
+          Keys.onPressed: function(event) {
+            switch (event.key) {
+            case Qt.Key_Down:
+              window.scrollList(window.rowStep)
+              event.accepted = true
+              break
+            case Qt.Key_Up:
+              window.scrollList(-window.rowStep)
+              event.accepted = true
+              break
+            case Qt.Key_PageDown:
+              window.scrollList(list.height * 0.9)
+              event.accepted = true
+              break
+            case Qt.Key_PageUp:
+              window.scrollList(-list.height * 0.9)
+              event.accepted = true
+              break
+            case Qt.Key_Home:
+              window.scrollList(-list.contentHeight)
+              event.accepted = true
+              break
+            case Qt.Key_End:
+              window.scrollList(list.contentHeight)
+              event.accepted = true
+              break
+            case Qt.Key_Tab:
+              window.switchTab(1)
+              event.accepted = true
+              break
+            case Qt.Key_Backtab:
+              window.switchTab(-1)
+              event.accepted = true
+              break
+            }
           }
         }
 
@@ -450,10 +508,31 @@ PanelWindow {
             MouseArea {
               anchors.fill: parent
               cursorShape: Qt.PointingHandCursor
-              onClicked: window.tab = tabPill.modelData.id
+              onClicked: {
+                // Clicking a pill must not steal the keyboard from the search
+                // field; only give it back if it already had it.
+                var wasSearching = window.searchFocused
+                window.tab = tabPill.modelData.id
+                if (wasSearching) window.startSearch()
+              }
             }
           }
         }
+      }
+
+      // How much of the listing the search is showing, so a filtered list never
+      // looks like a short one.
+      Text {
+        id: resultCount
+        anchors.right: parent.right
+        anchors.rightMargin: Style.spacing.xxl
+        anchors.verticalCenter: tabs.verticalCenter
+        visible: window.activeLoaded && window.totalCount > 0
+        textFormat: Text.PlainText
+        text: strings.t("panel.results").arg(window.matchCount).arg(window.totalCount)
+        color: Commons.Color.muted
+        font.family: Style.fontFamily
+        font.pixelSize: Style.fontPx(0.85)
       }
 
       Rectangle {
@@ -522,6 +601,22 @@ PanelWindow {
             }
           }
         }
+      }
+
+      // Thin position indicator. The wheel and the arrow keys both move the
+      // list, and without this a long listing gives no sense of place.
+      Rectangle {
+        id: scrollThumb
+        readonly property real maxY: Math.max(0, list.contentHeight - list.height)
+        visible: maxY > 0
+        x: list.x + list.width - width
+        y: list.y + (maxY > 0 ? (list.contentY / maxY) * (list.height - height) : 0)
+        width: Style.space(2)
+        height: Math.max(Style.space(16),
+          list.height * list.height / Math.max(list.height, list.contentHeight))
+        radius: width / 2
+        color: Commons.Color.muted
+        opacity: 0.45
       }
 
       Text {

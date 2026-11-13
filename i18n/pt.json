@@ -7,6 +7,7 @@
   "panel.noResults": "Nenhum atalho corresponde à pesquisa.",
   "panel.empty": "Nenhum atalho encontrado. Confirma que `omarchy menu keybindings --print` funciona.",
   "panel.loading": "A ler os atalhos…",
+  "panel.results": "%1 de %2",
   "group.none": "Sem modificador",
   "tab.omarchy": "Omarchy",
   "tab.tmux": "Tmux",

@@ -7,6 +7,7 @@
   "panel.noResults": "No keybinding matches that search.",
   "panel.empty": "No keybindings found. Check that `omarchy menu keybindings --print` works.",
   "panel.loading": "Reading keybindings…",
+  "panel.results": "%1 of %2",
   "group.none": "No modifier",
   "tab.omarchy": "Omarchy",
   "tab.tmux": "Tmux",

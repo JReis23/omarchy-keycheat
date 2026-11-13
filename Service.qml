@@ -29,6 +29,16 @@ Item {
   // Pinning is per screen: with two monitors, pinning one must not take the
   // other one's space. Keyed by Quickshell's screen name.
   property var pinnedScreens: ({})
+  // Pins outlive a shell restart. The state file is the record; the config is
+  // only read, so `shell.json` stays untouched as the README promises.
+  readonly property string statePath: {
+    var base = Quickshell.env("XDG_STATE_HOME")
+    if (!base) base = Quickshell.env("HOME") + "/.local/state"
+    return base + "/omarchy/keycheat.json"
+  }
+  // False until the state file has been read, so the config seed written during
+  // startup never overwrites what the user pinned in the previous session.
+  property bool pinStateLoaded: false
   property bool optionsApplied: false
   readonly property int panelWidth: root.numberOption("width", 240, 640, 360)
   readonly property real panelOpacity: root.numberOption("opacity", 0.4, 1, 0.94)
@@ -153,6 +163,7 @@ Item {
     if (value === true) next[name] = true
     else delete next[name]
     root.pinnedScreens = next
+    root.savePins()
   }
 
   function toggleFor(screenName) {
@@ -162,6 +173,7 @@ Item {
   function setPinnedAll(value) {
     if (value !== true) {
       root.pinnedScreens = ({})
+      root.savePins()
       return
     }
     var next = {}
@@ -170,6 +182,36 @@ Item {
       if (name !== "") next[name] = true
     }
     root.pinnedScreens = next
+    root.savePins()
+  }
+
+  // The config's `pinned` only seeds the first run: once the state file has a
+  // `screens` list it wins, including an empty one, so unpinning everything
+  // sticks instead of being undone by `pinned: true`.
+  function restorePins(raw) {
+    var parsed = null
+    try {
+      parsed = JSON.parse(String(raw || ""))
+    } catch (error) {
+      parsed = null
+    }
+    if (parsed && Array.isArray(parsed.screens)) {
+      var next = {}
+      for (var i = 0; i < parsed.screens.length; i++) {
+        var name = String(parsed.screens[i] || "")
+        if (name !== "") next[name] = true
+      }
+      root.pinnedScreens = next
+    }
+    root.pinStateLoaded = true
+  }
+
+  function savePins() {
+    // Before the file is read, the only state is the config seed; writing it
+    // would replace the previous session's pins.
+    if (!root.pinStateLoaded) return
+    var names = Object.keys(root.pinnedScreens).sort()
+    pinStateFile.setText(JSON.stringify({ screens: names }, null, 2) + "\n")
   }
 
   // The IPC commands act on the screen the pointer/keyboard is on, which is the
@@ -220,6 +262,17 @@ Item {
     printErrors: false
     onLoaded: root.applyOptions(text())
     onFileChanged: root.applyOptions(text())
+  }
+
+  // The pin record. `atomicWrites` keeps a half-written file from ever being
+  // read back as an empty pin set after a crash.
+  FileView {
+    id: pinStateFile
+    path: root.statePath
+    watchChanges: false
+    atomicWrites: true
+    blockLoading: true
+    printErrors: false
   }
 
   Process {
@@ -343,6 +396,8 @@ Item {
 
   Component.onCompleted: {
     root.applyOptions(configFile.text())
+    // After the config seed, so the previous session's pins win.
+    root.restorePins(pinStateFile.text())
     root.reload()
     borderProcess.running = true
   }
