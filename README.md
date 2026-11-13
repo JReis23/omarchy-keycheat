@@ -203,12 +203,12 @@ omarchy-shell jr.keycheat refresh    # re-read the bindings
 ## Development
 
 ```bash
-node --test test/                     # parsing, grouping, screen layout, manifest
+node --test test/*.test.mjs           # parsing, grouping, screen layout, manifest
 omarchy plugin validate .             # the shell's own manifest check
 ```
 
-The GitHub Actions workflow runs `node --test test/` on every push and pull
-request, including the manifest checks that mirror the validator.
+The GitHub Actions workflow runs the same tests on every push and pull request,
+including the manifest checks that mirror the validator.
 
 Saving a file under `~/.config/omarchy/plugins/jr.keycheat/` reloads the plugin.
 If a change does not apply, force it:

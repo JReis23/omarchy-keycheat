@@ -16,5 +16,6 @@ jobs:
         with:
           node-version: 22
       # No dependencies: the tests use node:test and the manifest checks mirror
-      # `omarchy plugin validate`, which is not on a stock runner.
-      - run: node --test test/
+      # `omarchy plugin validate`, which is not on a stock runner. The files are
+      # listed explicitly because older Node versions do not take a directory.
+      - run: node --test test/*.test.mjs
