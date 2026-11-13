@@ -2,7 +2,7 @@
   "panel.title": "Atalhos",
   "panel.pin": "Fixar",
   "panel.unpin": "Libertar",
-  "panel.close": "Fechar",
+  "panel.close": "Esconder",
   "panel.search": "Pesquisar atalhos…",
   "panel.noResults": "Nenhum atalho corresponde à pesquisa.",
   "panel.empty": "Nenhum atalho encontrado. Confirma que `omarchy menu keybindings --print` funciona.",

@@ -1,8 +1,9 @@
 # Keycheat
 
-An Omarchy shell plugin that keeps the keybinding cheat sheet at the right edge
-of the screen. It stays hidden until the pointer touches the edge, then slides
-out, themed by the running Omarchy theme. Pin it to keep it open.
+An Omarchy shell plugin that keeps the keybinding cheat sheet at the outer edge
+of the screen — the right edge on a single monitor. It stays hidden until the
+pointer touches that edge, then slides out, themed by the running Omarchy theme.
+Pin it to keep it open.
 
 Two tabs share the panel: **Omarchy** (the compositor's bindings) and **Tmux**.
 It reads `omarchy menu keybindings --print` and
@@ -54,12 +55,13 @@ omarchy plugin remove jr.keycheat
 - Move the pointer to the right edge of the screen: the panel slides out.
   With two monitors side by side it opens outwards instead: the left screen's
   panel comes out of its left edge, the right screen's out of its right edge.
-  Two stacked screens both keep it on the right, and with three or more only the
-  two end screens open on hover — the seams between screens never do, so moving
-  the pointer from one monitor to the other no longer makes the panel flicker.
+  Stacked screens keep it on the right whatever their widths, and in a row of
+  three or more the screen in the middle does not open on hover — the seams
+  between screens never do, so moving the pointer from one monitor to the other
+  does not make the panel flicker.
 - Move away: it slides back after a moment.
 - **`SUPER + F1`** opens the panel on the focused screen with the search field
-  ready (press it again to close it); **`SUPER + F2`** pins that screen. Both
+  ready (press it again to close the search); **`SUPER + F2`** pins that screen. Both
   need the binds from [Keybind](#keybind) below.
 - **Tabs** (under the search field): `Omarchy` shows the compositor's bindings,
   `Tmux` shows tmux's. The search only looks inside the tab you are on.
@@ -96,10 +98,10 @@ o.bind("SUPER + F2", "Keycheat pin", "omarchy-shell jr.keycheat pin")
 
 Add them to `~/.config/hypr/bindings.lua`. `SUPER + F1` slides the panel on the
 focused screen out with the search field ready, so you can type immediately.
-Press it again to close it: on a pinned screen that also unpins, exactly like
-**Hide**. While the field has the keyboard the panel takes it exclusively;
-`Escape` (twice if there is text) gives it back, and focusing another window
-does too. `SUPER + F2` pins that screen, or `omarchy-shell jr.keycheat toggle`
+Press it again to close the search: an unpinned panel slides away, a pinned one
+gives the keyboard back and stays pinned; **Hide** unpins it. While the field has the keyboard the panel takes it
+exclusively; `Escape` (twice if there is text) gives it back, and focusing
+another window does too. `SUPER + F2` pins that screen, or `omarchy-shell jr.keycheat toggle`
 if you would rather have one key that toggles it.
 
 `SUPER + arrow` keeps working while the field has the keyboard, so a search never
@@ -109,7 +111,7 @@ dispatched right after. That needs one extra bind per direction, in the same
 file, next to the search bind:
 
 ```lua
--- Sem descrição, para não aparecerem na lista de atalhos.
+-- No description, so they stay out of the keybindings list.
 for _, direction in ipairs({ "left", "right", "up", "down" }) do
   o.bind("SUPER + " .. direction:upper(), nil,
     "omarchy-shell jr.keycheat leave " .. direction, { non_consuming = true })
@@ -118,7 +120,9 @@ end
 
 They do not consume the key: the normal `SUPER + arrow` bind still runs, and with
 no search open these do nothing. An unpinned panel slides away when you leave it
-this way; a pinned one stays and keeps its reserved space.
+this way; a pinned one stays and keeps its reserved space. The move dispatched
+after the panel lets go is always a focus move (`hl.dsp.focus`), so these binds
+assume `SUPER + arrow` moves focus, as it does in Omarchy's defaults.
 
 ## Configuration
 
@@ -172,22 +176,28 @@ omarchy-shell jr.keycheat refresh    # re-read the bindings
   the per-screen pin state, persisted in
   `~/.local/state/omarchy/keycheat.json` so a shell restart does not lose it. It
   listens for Hyprland's `configreloaded` event so a binding edit shows up
-  without a restart, and for `activewindow` so a search stops holding the
-  keyboard when another window takes the focus.
+  without a restart, and for `activewindowv2` so a search stops holding the
+  keyboard when another window takes the focus. Only a change of window address
+  counts: Hyprland repeats the event when the active window merely retitles
+  itself, and that must not close a search.
 - The Tmux tab runs `omarchy-menu-tmux-keybindings --print`, which parses the
   config in a throwaway tmux server, and watches `$TMUX_CONF` (default
-  `~/.config/tmux/tmux.conf`) so an edit refreshes the tab. It reuses the same
+  `~/.config/tmux/tmux.conf`) so an edit refreshes the tab. Sourcing the config
+  runs any `run-shell`/`if-shell` lines it has, so this only happens at start,
+  when that file changes, on `refresh`, or on reveal after a failed read — not
+  on every Hyprland reload. It reuses the same
   row renderer: `Binds.parseTmux` and `Binds.groupTmux` only differ in ordering,
   with the prefix table first, the root-table binds next and copy mode last.
 - `Panel.qml` is one `PanelWindow` per screen: anchored top/bottom and to the
   side `Screens.js` picks for it, layer `Top`, `exclusiveZone` equal to its
   width while pinned and `0` while hidden. The surface stays mapped and only
   slides its card off-screen, so revealing it is instant.
-- `Screens.js` turns the monitor geometry into a side and a flag per screen: a
-  screen at the left of the desktop with another one to its right faces left,
-  every other one faces right, and only the two ends of the desktop get a hover
-  strip. A screen in the middle still exists for the keybind, the IPC and the
-  pin, it just does not grab the pointer.
+- `Screens.js` turns the monitor geometry into a side and a flag per screen,
+  looking only at that screen's own neighbours (screens touching its left or
+  right edge and sharing some of its height). A screen with a neighbour only on
+  its right faces left, every other one faces right, and the strip exists only
+  when the chosen edge is not a seam. A screen in the middle of a row still
+  exists for the keybind, the IPC and the pin, it just does not grab the pointer.
 - While hidden, the layer surface's input region (`mask`) is a thin strip at the
   edge, so clicks and scrolls reach the windows underneath. No screen space is
   reserved and tiled windows keep their width.
@@ -275,8 +285,10 @@ spelled `SUPER`, not `Win` or `Meta`.
   keybind, the `search` IPC or the pin, or it would open whenever the pointer
   crossed the seam.
 - Two side-by-side monitors open outwards, so the panel on the left screen is on
-  the left. Stacked screens, and the ends of a three-screen desktop, keep it on
-  the right.
+  the left. In a row of three the left end opens on the left, the right end on
+  the right; stacked screens keep it on the right.
+- Pins are remembered by connector name (`DP-3`, `eDP-1`). A dock or cable that
+  brings the same monitor back under another name starts it unpinned.
 - Layer surfaces cannot be selected with `SUPER + arrow`; use the `search` IPC
   (see Keybind above).
 - Leaving a search with `SUPER + arrow` needs the extra `leave` bind in

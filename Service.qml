@@ -124,17 +124,19 @@ Item {
     }
   }
 
+  // The compositor's bindings. Hyprland reloads on every binding edit, so this
+  // runs on `configreloaded`; the tmux listing has its own trigger below.
   function reload() {
     if (bindsProcess.running) {
       pendingReload = true
     } else {
       bindsProcess.running = true
     }
-    root.reloadTmux()
   }
 
   // Tmux bindings change when the user edits their config, not when Hyprland
-  // reloads, so this has its own trigger.
+  // reloads, so this has its own trigger. Parsing sources the user's tmux.conf
+  // in a throwaway server, so it only runs when that file (or the user) asks.
   function reloadTmux() {
     if (tmuxProcess.running) {
       tmuxPending = true
@@ -143,11 +145,13 @@ Item {
     tmuxProcess.running = true
   }
 
-  // Called when a panel is revealed, so a shell that started before Hyprland
-  // was ready fills in on first use rather than staying empty.
+  // Called when a panel is revealed, so a listing that failed earlier (a shell
+  // that started before Hyprland was ready, a transient error) is read again
+  // on first use rather than staying empty. Both commands are quick, and a
+  // listing that is already running only queues one more read.
   function ensureLoaded() {
-    if (!loaded && !failed) reload()
-    else if (!tmuxLoaded && !tmuxFailed) root.reloadTmux()
+    if (!root.loaded) root.reload()
+    if (!root.tmuxLoaded) root.reloadTmux()
   }
 
   // Pinning is per screen: pinning the panel on one monitor must not take the
@@ -261,7 +265,9 @@ Item {
     blockLoading: true
     printErrors: false
     onLoaded: root.applyOptions(text())
-    onFileChanged: root.applyOptions(text())
+    // `fileChanged` does not re-read the file: `text()` would still return the
+    // old content. `reload()` reads it again and `onLoaded` applies it.
+    onFileChanged: reload()
   }
 
   // The pin record. `atomicWrites` keeps a half-written file from ever being
@@ -334,13 +340,21 @@ Item {
     }
   }
 
+  // Address of the window Hyprland last reported as active. Hyprland repeats
+  // `activewindow` when the active window only changes its title, so the
+  // address is what tells a real focus change apart.
+  property string activeWindowAddress: ""
+
   // Every binding change reloads Hyprland, so this is the one signal that
   // covers edits to bindings.lua as well as binds added by an app.
   Connections {
     target: Hyprland
     function onRawEvent(event) {
       var name = String(event ? event.name : "")
-      if (name === "activewindow") {
+      if (name === "activewindowv2") {
+        var address = String(event.data || "")
+        if (address === root.activeWindowAddress) return
+        root.activeWindowAddress = address
         root.blurRequest += 1
         return
       }
@@ -352,7 +366,7 @@ Item {
 
   Process {
     id: borderProcess
-    command: ["hyprctl", "-j", "getoption", "decoration:border_size"]
+    command: ["hyprctl", "-j", "getoption", "general:border_size"]
 
     stdout: StdioCollector {
       waitForEnd: true
@@ -377,7 +391,7 @@ Item {
     function unpinAll(): void { root.setPinnedAll(false) }
     function search(): void { root.requestSearch() }
     function leave(direction: string): void { root.leave(direction) }
-    function refresh(): void { root.reload() }
+    function refresh(): void { root.reload(); root.reloadTmux() }
   }
 
   Variants {
@@ -399,6 +413,7 @@ Item {
     // After the config seed, so the previous session's pins win.
     root.restorePins(pinStateFile.text())
     root.reload()
+    root.reloadTmux()
     borderProcess.running = true
   }
 }

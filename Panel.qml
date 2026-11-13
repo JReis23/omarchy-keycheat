@@ -101,6 +101,14 @@ PanelWindow {
       window.plugin.searchingScreen = ""
   }
 
+  // A monitor unplugged mid-search takes its panel with it without the change
+  // above firing, which would leave `leave` dispatching a second focus move on
+  // every SUPER + arrow. `screen` may already be gone here, so this checks the
+  // panel's own state rather than its name.
+  Component.onDestruction: {
+    if (window.plugin && window.searchFocused) window.plugin.searchingScreen = ""
+  }
+
   // Clicking anywhere in the field starts a search; the surface only becomes
   // keyboard-interactive from this point on.
   function startSearch() {
@@ -142,11 +150,11 @@ PanelWindow {
 
     function onSearchRequestChanged() {
       if (!window.plugin || window.plugin.searchScreen !== window.screenName) return
-      // The same keybind closes it: a pinned screen behaves like the Hide
-      // button (unpin + slide away), an unpinned one just slides away.
+      // The same keybind closes the search: an unpinned panel slides away, a
+      // pinned one only gives the keyboard back and stays where it was pinned.
+      // Unpinning is the pin keybind's job, or the Hide button's.
       if (window.searchFocused) {
         window.hoverRevealed = false
-        if (window.pinned) window.plugin.setPinnedFor(window.screenName, false)
         window.releaseSearchFocus()
         return
       }
@@ -154,9 +162,13 @@ PanelWindow {
       window.startSearch()
     }
 
-    // Another window took the focus: stop holding the keyboard.
+    // Another window took the focus: stop holding the keyboard, and let an
+    // unpinned panel slide away if the pointer is not keeping it open. A pinned
+    // one stays, which is what pinning is for.
     function onBlurRequestChanged() {
-      if (window.searchFocused) window.releaseSearchFocus()
+      if (!window.searchFocused) return
+      window.releaseSearchFocus()
+      hideTimer.restart()
     }
 
     // A SUPER + arrow bind asks the searching panel to let the compositor move
@@ -287,6 +299,9 @@ PanelWindow {
             color: pinArea.containsMouse || window.pinned ? Style.hoverFill : Style.normalFill
             border.width: Style.normalBorderWidth
             border.color: Style.normalBorderColor
+            Accessible.role: Accessible.Button
+            Accessible.name: pinLabel.text
+            Accessible.onPressAction: if (window.plugin) window.plugin.toggleFor(window.screenName)
 
             Text {
               id: pinLabel
@@ -316,6 +331,12 @@ PanelWindow {
             color: closeArea.containsMouse ? Style.hoverFill : Style.normalFill
             border.width: Style.normalBorderWidth
             border.color: Style.normalBorderColor
+            Accessible.role: Accessible.Button
+            Accessible.name: closeLabel.text
+            Accessible.onPressAction: {
+              window.hoverRevealed = false
+              if (window.plugin) window.plugin.setPinnedFor(window.screenName, false)
+            }
 
             Text {
               id: closeLabel
@@ -355,12 +376,6 @@ PanelWindow {
         border.width: Style.normalBorderWidth
         border.color: searchInput.activeFocus ? Commons.Color.accent : Style.normalBorderColor
 
-        // Behind the input, so a click on the padding focuses it too.
-        MouseArea {
-          anchors.fill: parent
-          onClicked: window.startSearch()
-        }
-
         Text {
           anchors.left: parent.left
           anchors.leftMargin: Style.spacing.lg
@@ -375,6 +390,8 @@ PanelWindow {
 
         TextInput {
           id: searchInput
+          Accessible.role: Accessible.EditableText
+          Accessible.name: strings.t("panel.search")
           anchors.left: parent.left
           anchors.leftMargin: Style.spacing.lg
           anchors.right: clearLabel.left
@@ -442,6 +459,19 @@ PanelWindow {
           }
         }
 
+        // Above the input, so a click anywhere in the box (the text line
+        // included) asks for the keyboard first. The press is then passed on, so
+        // the input still places the cursor and selects with the mouse. Below
+        // the clear button, which keeps its own click.
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.IBeamCursor
+          onPressed: function(mouse) {
+            window.startSearch()
+            mouse.accepted = false
+          }
+        }
+
         Text {
           id: clearLabel
           anchors.right: parent.right
@@ -493,6 +523,10 @@ PanelWindow {
             color: tabPill.active ? Style.hoverFill : "transparent"
             border.width: Style.normalBorderWidth
             border.color: tabPill.active ? Commons.Color.accent : "transparent"
+            Accessible.role: Accessible.PageTab
+            Accessible.name: tabPill.modelData.label
+            Accessible.selected: tabPill.active
+            Accessible.onPressAction: window.tab = tabPill.modelData.id
 
             Text {
               id: tabLabel
