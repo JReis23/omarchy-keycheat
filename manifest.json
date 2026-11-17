@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "jr.keycheat",
   "name": "Keycheat",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "author": "JReis23",
   "license": "MIT",
   "description": "Keybinding cheat sheet that waits at the outer edge of the screen and slides out on hover.",
