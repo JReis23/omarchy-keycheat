@@ -29,6 +29,9 @@ Item {
   // Pinning is per screen: with two monitors, pinning one must not take the
   // other one's space. Keyed by Quickshell's screen name.
   property var pinnedScreens: ({})
+  // Rows the user marked, per listing, as ids from `Binds.favouriteId`. Stored in
+  // the same state file as the pins.
+  property var favourites: ({ omarchy: [], tmux: [] })
   // Pins outlive a shell restart. The state file is the record; the config is
   // only read, so `shell.json` stays untouched as the README promises.
   readonly property string statePath: {
@@ -193,7 +196,7 @@ Item {
     if (value === true) next[name] = true
     else delete next[name]
     root.pinnedScreens = next
-    root.savePins()
+    root.saveState()
   }
 
   function toggleFor(screenName) {
@@ -203,7 +206,7 @@ Item {
   function setPinnedAll(value) {
     if (value !== true) {
       root.pinnedScreens = ({})
-      root.savePins()
+      root.saveState()
       return
     }
     var next = {}
@@ -212,36 +215,60 @@ Item {
       if (name !== "") next[name] = true
     }
     root.pinnedScreens = next
-    root.savePins()
+    root.saveState()
   }
 
   // The config's `pinned` only seeds the first run: once the state file has a
   // `screens` list it wins, including an empty one, so unpinning everything
-  // sticks instead of being undone by `pinned: true`.
-  function restorePins(raw) {
-    var parsed = null
-    try {
-      parsed = JSON.parse(String(raw || ""))
-    } catch (error) {
-      parsed = null
-    }
-    if (parsed && Array.isArray(parsed.screens)) {
+  // sticks instead of being undone by `pinned: true`. A file written before the
+  // favourites existed has no `version` and loads as the same pins with none.
+  function restoreState(raw) {
+    var state = Binds.readState(raw)
+    if (state.screens !== null) {
       var next = {}
-      for (var i = 0; i < parsed.screens.length; i++) {
-        var name = String(parsed.screens[i] || "")
-        if (name !== "") next[name] = true
-      }
+      for (var i = 0; i < state.screens.length; i++) next[state.screens[i]] = true
       root.pinnedScreens = next
     }
+    root.favourites = state.favourites
     root.pinStateLoaded = true
+    root.pruneFavourites("omarchy")
+    root.pruneFavourites("tmux")
   }
 
-  function savePins() {
+  function saveState() {
     // Before the file is read, the only state is the config seed; writing it
-    // would replace the previous session's pins.
+    // would replace the previous session's pins and favourites.
     if (!root.pinStateLoaded) return
-    var names = Object.keys(root.pinnedScreens).sort()
-    pinStateFile.setText(JSON.stringify({ screens: names }, null, 2) + "\n")
+    pinStateFile.setText(Binds.writeState(Object.keys(root.pinnedScreens), root.favourites))
+  }
+
+  function sectionsFor(tab) {
+    return tab === "tmux" ? root.tmuxSections : root.sections
+  }
+
+  // The panel only sends the intent; the service owns the file, like the pins.
+  function toggleFavourite(tab, bind) {
+    var name = tab === "tmux" ? "tmux" : "omarchy"
+    var next = Object.assign({}, root.favourites)
+    next[name] = Binds.toggleFavourite(next[name], root.sectionsFor(name), bind)
+    root.favourites = next
+    root.saveState()
+  }
+
+  // Forget favourites whose bind is gone, but only from a listing that has rows
+  // and once the file has been read: a failed or still-running read must not
+  // wipe what the user marked.
+  function pruneFavourites(tab) {
+    if (!root.pinStateLoaded) return
+    var sections = root.sectionsFor(tab)
+    if (Binds.count(sections) === 0) return
+    var current = root.favourites[tab] || []
+    var kept = Binds.pruneFavourites(current, sections)
+    if (kept.length === current.length) return
+    var next = Object.assign({}, root.favourites)
+    next[tab] = kept
+    root.favourites = next
+    root.saveState()
   }
 
   // The IPC commands act on the screen the pointer/keyboard is on, which is the
@@ -316,8 +343,8 @@ Item {
     onFileChanged: reload()
   }
 
-  // The pin record. `atomicWrites` keeps a half-written file from ever being
-  // read back as an empty pin set after a crash.
+  // The pin and favourites record. `atomicWrites` keeps a half-written file from
+  // ever being read back as an empty record after a crash.
   FileView {
     id: pinStateFile
     path: root.statePath
@@ -338,6 +365,7 @@ Item {
         root.sections = Binds.group(entries)
         root.loaded = entries.length > 0
         root.failed = entries.length === 0
+        root.pruneFavourites("omarchy")
       }
     }
 
@@ -375,6 +403,7 @@ Item {
         root.tmuxSections = Binds.groupTmux(entries)
         root.tmuxLoaded = entries.length > 0
         root.tmuxFailed = entries.length === 0
+        root.pruneFavourites("tmux")
       }
     }
 
@@ -457,7 +486,7 @@ Item {
   Component.onCompleted: {
     root.applyOptions(configFile.text())
     // After the config seed, so the previous session's pins win.
-    root.restorePins(pinStateFile.text())
+    root.restoreState(pinStateFile.text())
     root.reload()
     root.reloadTmux()
     borderProcess.running = true

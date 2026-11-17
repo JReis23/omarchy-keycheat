@@ -107,8 +107,24 @@ PanelWindow {
   readonly property bool activeLoaded: window.plugin
     ? (window.tab === "tmux" ? window.plugin.tmuxLoaded : window.plugin.loaded)
     : false
-  readonly property var visibleSections: Binds.rank(window.activeSections, window.query)
-  readonly property int matchCount: Binds.count(window.visibleSections)
+  // The ids the user marked in this listing, and the rows they mark. The marked
+  // rows also stay in their own group below: a favourite is a shortcut, not a
+  // move.
+  readonly property var favouriteIds: window.plugin && window.plugin.favourites
+    ? (window.plugin.favourites[window.tab] || []) : []
+  readonly property var favouriteMarks: Binds.favouriteSet(window.activeSections, window.favouriteIds)
+  readonly property var listSections: Binds.rank(window.activeSections, window.query)
+  readonly property var favouriteRows:
+    Binds.favouriteItems(window.activeSections, window.favouriteIds, window.query)
+  // The favourites come first, in the listing's order whatever the query is.
+  readonly property var visibleSections: window.favouriteRows.length > 0
+    ? [{ mods: "", favourites: true, items: window.favouriteRows }].concat(window.listSections)
+    : window.listSections
+  // `matchCount` is what the query found in the listing and feeds the "x of y"
+  // label; `rowCount` is every row on screen, favourites included, and bounds
+  // the cursor.
+  readonly property int matchCount: Binds.count(window.listSections)
+  readonly property int rowCount: Binds.count(window.visibleSections)
   readonly property int totalCount: Binds.count(window.activeSections)
   // Where each section's rows start in the flat cursor index, so a row delegate
   // knows whether it is the selected one.
@@ -198,20 +214,40 @@ PanelWindow {
   // Move the cursor by `delta` rows. `Binds.moveCursor` clamps, so the ends of
   // the list do not wrap.
   function moveCursor(delta) {
-    if (window.matchCount === 0) return
-    window.cursor = Binds.moveCursor(window.cursor, delta, window.matchCount)
+    if (window.rowCount === 0) return
+    window.cursor = Binds.moveCursor(window.cursor, delta, window.rowCount)
     window.scrollCursorIntoView()
   }
 
   // Put the selected binding on the clipboard. The combo alone is what gets
   // pasted back into a config or a terminal, so the description stays behind.
   function copyCursor() {
-    if (!window.plugin || window.matchCount === 0) return
+    if (!window.plugin || window.rowCount === 0) return
     var row = window.rowAt(window.cursor)
     if (!row || !row.bind) return
     window.plugin.copy(Binds.combo(row.bind))
     window.copiedAt = window.cursor
     copyTimer.restart()
+  }
+
+  // Mark or unmark a row. The service writes the file; the panel keeps the
+  // cursor on the same binding, since a favourite appearing or leaving the top
+  // section shifts every row below it.
+  function toggleFavourite(bind) {
+    if (!window.plugin || !bind) return
+    var before = window.favouriteRows.length
+    window.plugin.toggleFavourite(window.tab, bind)
+    var shift = window.favouriteRows.length - before
+    // A cursor inside the favourites section stays on its line; one below it
+    // moves with the rows.
+    if (window.cursor >= before) window.cursor = Math.max(0, window.cursor + shift)
+    window.cursor = Math.min(window.cursor, Math.max(0, window.rowCount - 1))
+    window.copiedAt = -1
+  }
+
+  function toggleFavouriteAtCursor() {
+    var row = window.rowAt(window.cursor)
+    if (row && row.bind) window.toggleFavourite(row.bind)
   }
 
   // A new query or tab starts the cursor at the top again, and forgets any
@@ -250,9 +286,9 @@ PanelWindow {
   onMatchCountChanged: {
     // A shorter listing (a narrower query, a reload) must not leave the cursor
     // past the last row.
-    var last = Math.max(0, window.matchCount - 1)
+    var last = Math.max(0, window.rowCount - 1)
     if (window.cursor > last) window.cursor = last
-    if (window.copiedAt >= window.matchCount) window.copiedAt = -1
+    if (window.copiedAt >= window.rowCount) window.copiedAt = -1
   }
   onRevealedChanged: if (!window.revealed) window.releaseSearchFocus()
 
@@ -553,13 +589,19 @@ PanelWindow {
               event.accepted = true
               break
             case Qt.Key_End:
-              window.cursor = Math.max(0, window.matchCount - 1)
+              window.cursor = Math.max(0, window.rowCount - 1)
               window.scrollCursorIntoView()
               event.accepted = true
               break
             case Qt.Key_Return:
             case Qt.Key_Enter:
               window.copyCursor()
+              event.accepted = true
+              break
+            case Qt.Key_D:
+              // Ctrl + D, like a browser's bookmark key; a bare D is typing.
+              if (!(event.modifiers & Qt.ControlModifier)) break
+              window.toggleFavouriteAtCursor()
               event.accepted = true
               break
             case Qt.Key_Tab:
@@ -735,9 +777,11 @@ PanelWindow {
                 textFormat: Text.StyledText
                 // The filter also matches a section's modifier, so the header
                 // has to show the highlight for that match to make sense.
-                text: Binds.highlight(
-                  section.modelData.mods === "" ? strings.t("group.none") : section.modelData.mods,
-                  window.query, "<u>", "</u>")
+                text: section.modelData.favourites === true
+                  ? strings.t("group.favourites")
+                  : Binds.highlight(
+                    section.modelData.mods === "" ? strings.t("group.none") : section.modelData.mods,
+                    window.query, "<u>", "</u>")
                 color: Commons.Color.foreground
                 font.family: Style.fontFamily
                 font.pixelSize: Style.fontPx(0.85)
@@ -759,6 +803,10 @@ PanelWindow {
                   selected: window.cursor === flatIndex
                   copied: window.copiedAt === flatIndex
                   copiedLabel: strings.t("row.copied")
+                  favourite: Binds.isFavourite(modelData, window.favouriteMarks)
+                  favouriteLabel: Binds.isFavourite(modelData, window.favouriteMarks)
+                    ? strings.t("row.unfavourite") : strings.t("row.favourite")
+                  onFavouriteToggled: window.toggleFavourite(modelData)
                   conflictDescriptions: window.conflictDescriptions(modelData)
                   conflictHint: window.conflictHint(modelData)
                 }

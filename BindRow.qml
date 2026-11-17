@@ -18,6 +18,12 @@ Item {
   property bool selected: false
   property bool copied: false
   property string copiedLabel: ""
+  // A favourite shows its star all the time; any other row shows an empty one
+  // while hovered or selected. Clicking it only asks: the service owns the list.
+  property bool favourite: false
+  property string favouriteLabel: ""
+  signal favouriteToggled()
+  readonly property bool starVisible: row.favourite || row.hovered || row.selected
   // Descriptions that share this row's combo, when there is more than one. The
   // panel computes them over the whole listing, so filtering the list never
   // hides a conflict.
@@ -72,8 +78,8 @@ Item {
     anchors.leftMargin: Style.spacing.md
     anchors.right: row.copied
       ? copiedLabel.left
-      : (conflictBadge.visible ? conflictBadge.left : parent.right)
-    anchors.rightMargin: (row.copied || conflictBadge.visible) ? Style.spacing.sm : 0
+      : (conflictBadge.visible ? conflictBadge.left : star.visible ? star.left : parent.right)
+    anchors.rightMargin: (row.copied || conflictBadge.visible || star.visible) ? Style.spacing.sm : 0
     anchors.top: parent.top
     textFormat: Text.StyledText
     text: row.bind ? Binds.highlight(row.bind.description, row.query, "<b>", "</b>") : ""
@@ -90,7 +96,8 @@ Item {
   Text {
     id: conflictBadge
     visible: row.conflictCount > 1 && !row.copied
-    anchors.right: parent.right
+    anchors.right: star.visible ? star.left : parent.right
+    anchors.rightMargin: star.visible ? Style.spacing.sm : 0
     anchors.top: parent.top
     anchors.topMargin: 1
     textFormat: Text.PlainText
@@ -104,7 +111,8 @@ Item {
   Text {
     id: copiedLabel
     visible: row.copied
-    anchors.right: parent.right
+    anchors.right: star.visible ? star.left : parent.right
+    anchors.rightMargin: star.visible ? Style.spacing.sm : 0
     anchors.top: parent.top
     anchors.topMargin: 1
     textFormat: Text.PlainText
@@ -113,6 +121,29 @@ Item {
     font.family: Style.fontFamily
     font.pixelSize: Style.fontPx(0.75)
     font.bold: true
+  }
+
+  // The mark. Filled for a favourite, an outline otherwise.
+  Text {
+    id: star
+    visible: row.starVisible
+    anchors.right: parent.right
+    anchors.top: parent.top
+    textFormat: Text.PlainText
+    text: row.favourite ? "\u2605" : "\u2606"
+    color: row.favourite ? Commons.Color.accent : Commons.Color.muted
+    font.family: Style.fontFamily
+    font.pixelSize: Style.fontPx(0.95)
+
+    Accessible.role: Accessible.Button
+    Accessible.name: row.favouriteLabel
+
+    MouseArea {
+      anchors.fill: parent
+      anchors.margins: -Style.spacing.xs
+      cursorShape: Qt.PointingHandCursor
+      onClicked: row.favouriteToggled()
+    }
   }
 
   // Only the few conflicting rows carry a tooltip; a Loader keeps the other
