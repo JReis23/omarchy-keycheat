@@ -242,20 +242,40 @@ Item {
     if (root.searchingScreen === "") return
     root.leaveDirection = dir
     root.leaveRequest += 1
-    leaveTimer.restart()
+    // The panel reports the release through `searchingScreen`; this only covers
+    // a panel that never lets go.
+    leaveFallback.restart()
   }
 
-  // Long enough for the panel's keyboard release to reach the compositor.
+  // Dispatching before the panel has given the keyboard back is what Hyprland
+  // refuses, so the move waits for the panel's own signal instead of a guessed
+  // delay. The panel clears `searchingScreen` as it releases.
+  function flushLeave() {
+    var dir = root.leaveDirection
+    if (dir === "") return
+    root.leaveDirection = ""
+    leaveRelease.stop()
+    leaveFallback.stop()
+    Hyprland.dispatch('hl.dsp.focus({ direction = "' + dir + '" })')
+  }
+
+  onSearchingScreenChanged: {
+    if (root.searchingScreen !== "" || root.leaveDirection === "") return
+    leaveRelease.restart()
+  }
+
+  // One frame for the layer surface's commit to reach the compositor before the
+  // dispatch that depends on it.
   Timer {
-    id: leaveTimer
-    interval: 90
-    onTriggered: {
-      var dir = root.leaveDirection
-      root.leaveDirection = ""
-      if (dir === "") return
-      Quickshell.execDetached(["hyprctl", "dispatch",
-        'hl.dsp.focus({ direction = "' + dir + '" })'])
-    }
+    id: leaveRelease
+    interval: 40
+    onTriggered: root.flushLeave()
+  }
+
+  Timer {
+    id: leaveFallback
+    interval: 250
+    onTriggered: root.flushLeave()
   }
 
   FileView {
