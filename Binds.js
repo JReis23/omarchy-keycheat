@@ -105,15 +105,33 @@ function group(entries) {
   return sections
 }
 
+// Function keys and numbered rows read best in numeric order: F2 belongs
+// before F10, and a plain string compare would put it after. Runs of digits are
+// compared as numbers, every other run as text.
+function naturalCompare(a, b) {
+  var left = String(a || "").match(/(\d+|\D+)/g) || []
+  var right = String(b || "").match(/(\d+|\D+)/g) || []
+
+  for (var i = 0; i < Math.min(left.length, right.length); i++) {
+    var leftIsNumber = /^\d+$/.test(left[i])
+    var rightIsNumber = /^\d+$/.test(right[i])
+    var result
+    if (leftIsNumber && rightIsNumber) {
+      result = Number(left[i]) - Number(right[i])
+    } else {
+      var lowerLeft = left[i].toLowerCase()
+      var lowerRight = right[i].toLowerCase()
+      result = lowerLeft < lowerRight ? -1 : lowerLeft > lowerRight ? 1 : 0
+    }
+    if (result !== 0) return result
+  }
+
+  return left.length - right.length
+}
+
 function sortByKey(items) {
   var out = items.slice()
-  out.sort(function(a, b) {
-    var ka = String(a.key).toLowerCase()
-    var kb = String(b.key).toLowerCase()
-    if (ka < kb) return -1
-    if (ka > kb) return 1
-    return 0
-  })
+  out.sort(function(a, b) { return naturalCompare(a.key, b.key) })
   return out
 }
 
@@ -195,9 +213,12 @@ function count(sections) {
 
 // Case-insensitive search over the modifier, the key and the description.
 // Groups left without a match disappear, so the list only shows what matched.
+// The query is split on whitespace and every word must appear somewhere, so
+// "super close" finds SUPER + W even though the two words are not adjacent, and
+// the order they are typed in does not matter.
 function filter(sections, query) {
-  var needle = String(query || "").trim().toLowerCase()
-  if (needle === "") return sections
+  var terms = String(query || "").toLowerCase().trim().split(/\s+/)
+  if (terms.length === 1 && terms[0] === "") return sections
 
   var out = []
   for (var s = 0; s < sections.length; s++) {
@@ -206,7 +227,14 @@ function filter(sections, query) {
     for (var i = 0; i < section.items.length; i++) {
       var item = section.items[i]
       var haystack = String(section.mods + " " + item.key + " " + item.description).toLowerCase()
-      if (haystack.indexOf(needle) !== -1) items.push(item)
+      var matched = true
+      for (var t = 0; t < terms.length; t++) {
+        if (terms[t] !== "" && haystack.indexOf(terms[t]) === -1) {
+          matched = false
+          break
+        }
+      }
+      if (matched) items.push(item)
     }
     if (items.length > 0) out.push({ mods: section.mods, items: items })
   }

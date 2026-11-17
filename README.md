@@ -66,9 +66,10 @@ omarchy plugin remove jr.keycheat
 - **Tabs** (under the search field): `Omarchy` shows the compositor's bindings,
   `Tmux` shows tmux's. The search only looks inside the tab you are on.
 - **Search** (top of the panel): click the field, or press the keybind below, and
-  type. It filters on the modifier, the key and the description. `Escape` clears
-  the text, then closes the panel. The query is kept if the panel hides, so
-  hovering it again brings the same results back.
+  type. It filters on the modifier, the key and the description; every word of
+  the query must match, in any order, so `super close` finds `SUPER + W`.
+  `Escape` clears the text, then closes the panel. The query is kept if the
+  panel hides, so hovering it again brings the same results back.
 - **Keyboard**, while the field has the keyboard: `↑`/`↓` scroll one row,
   `PageUp`/`PageDown` a screenful, `Home`/`End` jump to either end, and
   `Tab`/`Shift + Tab` switch between the Omarchy and Tmux tabs without leaving
