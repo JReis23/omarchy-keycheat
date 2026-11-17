@@ -170,6 +170,16 @@ Item {
     if (!root.tmuxLoaded) root.reloadTmux()
   }
 
+  // Clipboard writes go through bash because `wl-copy` stays alive until the
+  // selection is replaced; `execDetached` leaves it detached from the shell.
+  // `printf %s` keeps a newline out of the clipboard.
+  function copy(text) {
+    var value = String(text || "")
+    if (value === "") return
+    Quickshell.execDetached(["bash", "-c",
+      "printf %s " + Util.shellQuote(value) + " | wl-copy"])
+  }
+
   // Pinning is per screen: pinning the panel on one monitor must not take the
   // other monitor's space. Keyed by Quickshell's screen name.
   function isPinned(screenName) {

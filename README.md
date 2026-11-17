@@ -74,11 +74,17 @@ omarchy plugin remove jr.keycheat
   a result always shows why it is there. `Escape` clears the text, then closes
   the panel. The query is kept if the panel hides, so hovering it again brings
   the same results back.
-- **Keyboard**, while the field has the keyboard: `↑`/`↓` scroll one row,
-  `PageUp`/`PageDown` a screenful, `Home`/`End` jump to either end, and
-  `Tab`/`Shift + Tab` switch between the Omarchy and Tmux tabs without leaving
-  the field. The count beside the tabs says how many of the listings match, and
-  a thin bar on the right shows where you are.
+- **Keyboard**, while the field has the keyboard: `↑`/`↓` move a cursor over the
+  rows (it stops at the ends instead of wrapping), `PageUp`/`PageDown` a
+  screenful, `Home`/`End` jump to either end, and `Enter` copies the selected
+  binding. `Tab`/`Shift + Tab` switch between the Omarchy and Tmux tabs without
+  leaving the field. The count beside the tabs says how many of the listings
+  match, a thin bar on the right shows where you are, and the selected row uses
+  the theme's selection fill.
+- **Copy**: `Enter` puts the combo alone (`SUPER + W`) on the clipboard through
+  `wl-copy`, ready to paste into a config or a terminal, and the row says
+  `Copied` for a moment. The description is not copied, so what you paste is
+  exactly what you press.
 - **Pin**: keeps the panel open **on that screen only** and reserves its width,
   so the tiling layout makes room instead of covering the windows. Other
   screens are untouched. The pin is remembered per screen, so it survives

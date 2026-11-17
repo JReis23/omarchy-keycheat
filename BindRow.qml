@@ -13,6 +13,11 @@ Item {
 
   property var bind: null
   property string query: ""
+  // The keyboard cursor is on this row. `copied` is the short confirmation
+  // after Enter put the binding on the clipboard.
+  property bool selected: false
+  property bool copied: false
+  property string copiedLabel: ""
   // Descriptions that share this row's combo, when there is more than one. The
   // panel computes them over the whole listing, so filtering the list never
   // hides a conflict.
@@ -27,8 +32,23 @@ Item {
   readonly property int lineHeight: Math.round(Style.fontPx(0.95) * 1.5)
   height: Math.max(lineHeight, keyText.implicitHeight, description.implicitHeight)
 
+  Accessible.role: Accessible.ListItem
+  Accessible.name: row.bind
+    ? String(row.bind.key) + " — " + String(row.bind.description) : ""
+  Accessible.selected: row.selected
+  Accessible.description: row.conflictHint
+
   HoverHandler {
     onHoveredChanged: row.hovered = hovered
+  }
+
+  // Behind the text, so the selected row reads as one block rather than two
+  // highlighted columns.
+  Rectangle {
+    anchors.fill: parent
+    radius: Style.cornerRadius
+    color: Style.selectedFill
+    visible: row.selected
   }
 
   Text {
@@ -50,8 +70,10 @@ Item {
     id: description
     anchors.left: keyText.right
     anchors.leftMargin: Style.spacing.md
-    anchors.right: conflictBadge.visible ? conflictBadge.left : parent.right
-    anchors.rightMargin: conflictBadge.visible ? Style.spacing.sm : 0
+    anchors.right: row.copied
+      ? copiedLabel.left
+      : (conflictBadge.visible ? conflictBadge.left : parent.right)
+    anchors.rightMargin: (row.copied || conflictBadge.visible) ? Style.spacing.sm : 0
     anchors.top: parent.top
     textFormat: Text.StyledText
     text: row.bind ? Binds.highlight(row.bind.description, row.query, "<b>", "</b>") : ""
@@ -67,13 +89,27 @@ Item {
   // other bindings without stretching the row.
   Text {
     id: conflictBadge
-    visible: row.conflictCount > 1
+    visible: row.conflictCount > 1 && !row.copied
     anchors.right: parent.right
     anchors.top: parent.top
     anchors.topMargin: 1
     textFormat: Text.PlainText
     text: row.conflictCount + "×"
     color: Commons.Color.urgent
+    font.family: Style.fontFamily
+    font.pixelSize: Style.fontPx(0.75)
+    font.bold: true
+  }
+
+  Text {
+    id: copiedLabel
+    visible: row.copied
+    anchors.right: parent.right
+    anchors.top: parent.top
+    anchors.topMargin: 1
+    textFormat: Text.PlainText
+    text: row.copiedLabel
+    color: Commons.Color.accent
     font.family: Style.fontFamily
     font.pixelSize: Style.fontPx(0.75)
     font.bold: true

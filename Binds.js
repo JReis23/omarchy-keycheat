@@ -304,6 +304,25 @@ function combo(item) {
   return mods === "" ? key : mods + " + " + key
 }
 
+// Cursor arithmetic over the flat list of visible rows. It clamps at the ends
+// instead of wrapping: pressing Down on the last row keeps the last row
+// selected, so the keyboard never jumps back to the top by accident.
+function moveCursor(index, delta, total) {
+  if (!(total > 0)) return -1
+  var next = Number(index) + Number(delta)
+  if (!isFinite(next)) next = 0
+  return Math.max(0, Math.min(total - 1, Math.round(next)))
+}
+
+// How many rows a PageUp/PageDown should move. A viewport shorter than one row
+// still moves one.
+function pageStep(rowHeight, viewportHeight) {
+  var row = Number(rowHeight)
+  var view = Number(viewportHeight)
+  if (!(row > 0) || !(view > 0)) return 1
+  return Math.max(1, Math.floor(view / row))
+}
+
 // Combos bound to more than one description, keyed by combo. A combo listed
 // twice with the same description is one binding shown twice, not a conflict.
 // Each listing has its own keyspace, so never pass Hyprland and tmux bindings
