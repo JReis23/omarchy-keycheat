@@ -5,6 +5,10 @@
 //   side:  "left" or "right" — the edge the panel is anchored to.
 //   hover: whether the edge strip that reveals it exists at all.
 //
+// The optional second argument pins every screen to "left" or "right" instead
+// of deriving the side; `layout` keeps the hover rule below, so a forced edge on
+// a seam has no strip.
+//
 // The panel only opens on an outside edge, never on the seam between two
 // screens, so moving the pointer from one monitor to the other does not graze
 // an edge strip and make the panel flicker.
@@ -24,9 +28,13 @@ function num(value) {
   return Number(value) || 0
 }
 
-function layout(screens) {
+function layout(screens, sideOption) {
   var out = {}
   var list = screens || []
+  // An explicit side wins over the geometry, so a layout the automatic rule
+  // misreads (portrait screens, a monitor above another) can be corrected. Any
+  // other value, including the default "auto", keeps the rule below.
+  var forced = sideOption === "left" || sideOption === "right" ? sideOption : ""
 
   for (var j = 0; j < list.length; j++) {
     var screen = list[j]
@@ -52,7 +60,11 @@ function layout(screens) {
       if (Math.abs(ox - (sx + sw)) <= TOUCH_TOLERANCE) hasRight = true
     }
 
-    var side = hasRight && !hasLeft ? "left" : "right"
+    // A forced edge on a seam keeps the panel where it is but gives it no hover
+    // strip: the seam belongs to neither screen, and a strip there would make
+    // the panel flicker whenever the pointer crosses monitors. The keybind and
+    // the pin still open it.
+    var side = forced !== "" ? forced : (hasRight && !hasLeft ? "left" : "right")
     out[name] = {
       side: side,
       hover: side === "left" ? !hasLeft : !hasRight

@@ -48,7 +48,9 @@ PanelWindow {
   implicitWidth: window.plugin ? window.plugin.panelWidth : 360
   implicitHeight: 0
 
-  readonly property int edgeDepth: Style.space(8)
+  readonly property int edgeDepth: window.plugin
+    ? window.plugin.panelEdgeWidth
+    : Style.space(8)
   // Hyprland leaves `gaps_out + border_size` between a tiled window and the
   // screen edge. The card keeps the same inset on its outer side and on the top
   // and bottom, so its outline lines up with the windows. On the inner side it
@@ -81,10 +83,15 @@ PanelWindow {
   // come from Omarchy's own annotated listings and render the same way. Kept in
   // one place so the pills and the keyboard shortcut cannot drift apart.
   property string tab: "omarchy"
-  readonly property var tabs: [
-    { id: "omarchy", label: strings.t("tab.omarchy") },
-    { id: "tmux", label: strings.t("tab.tmux") }
-  ]
+  // Tmux only earns a pill when its listing exists: a tab that can only report
+  // that the command is missing is noise. It stays while the first read is in
+  // flight, so the pills do not flicker on startup.
+  readonly property bool tmuxAvailable: window.plugin ? !window.plugin.tmuxFailed : true
+  readonly property var tabs: {
+    var list = [{ id: "omarchy", label: strings.t("tab.omarchy") }]
+    if (window.tmuxAvailable) list.push({ id: "tmux", label: strings.t("tab.tmux") })
+    return list
+  }
   // Number of times the focus nudge below has fired, so a panel that cannot
   // get the keyboard gives up instead of retrying forever.
   property int focusAttempts: 0
@@ -105,6 +112,12 @@ PanelWindow {
   readonly property int rowStep: Math.round(Style.fontPx(0.95) * 1.5) + Style.spacing.sm
 
   onTabChanged: list.contentY = 0
+  // A listing that disappears while the panel is open must not leave it on a tab
+  // that no longer exists.
+  onTabsChanged: {
+    var ids = window.tabs.map(function(tab) { return tab.id })
+    if (ids.indexOf(window.tab) === -1) window.tab = "omarchy"
+  }
 
   // Tell the service which panel holds the keyboard, so a SUPER + arrow only
   // takes the detour below when there is a search to let go of.
@@ -706,8 +719,10 @@ PanelWindow {
 
   Timer {
     id: hideTimer
-    // Long enough to cross the gap between the edge strip and the card.
-    interval: 220
+    // Long enough to cross the gap between the edge strip and the card by
+    // default; `hideDelay` replaces that guess, and 0 hides as soon as the
+    // pointer leaves.
+    interval: window.plugin ? window.plugin.panelHideDelay : 220
     onTriggered: {
       // Never close under someone who is typing into the search field, even
       // when the pointer is elsewhere (the keybind opens it that way).

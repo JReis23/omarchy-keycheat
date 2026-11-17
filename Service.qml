@@ -42,6 +42,15 @@ Item {
   property bool optionsApplied: false
   readonly property int panelWidth: root.numberOption("width", 240, 640, 360)
   readonly property real panelOpacity: root.numberOption("opacity", 0.4, 1, 0.94)
+  // Which edge the panel uses on every screen. "auto" leaves it to the screen
+  // geometry in Screens.js; the other two pin every screen to that edge.
+  readonly property string panelSide: root.stringOption("side",
+    ["auto", "left", "right"], "auto")
+  // How long an unpinned panel waits before sliding away and how wide the strip
+  // that reveals it is. `edgeWidth` is in real pixels, so its default follows
+  // the theme's spacing scale just as the old hard-coded value did.
+  readonly property int panelHideDelay: root.numberOption("hideDelay", 0, 2000, 220)
+  readonly property int panelEdgeWidth: root.numberOption("edgeWidth", 2, 40, Style.space(8))
 
   property var sections: []
   property bool loaded: false
@@ -81,7 +90,7 @@ Item {
   // exists at all. Only the outside of the desktop reveals on hover, so moving
   // the pointer between two monitors no longer grazes a strip and makes the
   // panel flicker.
-  readonly property var screenLayout: Screens.layout(root.screenGeometries)
+  readonly property var screenLayout: Screens.layout(root.screenGeometries, root.panelSide)
 
   // Bumped by the `search` IPC so the panel on the focused screen reveals
   // itself and puts the cursor in the search field.
@@ -103,6 +112,13 @@ Item {
     var value = Number(root.options[name])
     if (!isFinite(value)) return fallback
     return Math.max(min, Math.min(max, value))
+  }
+
+  // Allowed values only: a typo falls back to the default instead of leaving
+  // the panel with an edge it cannot anchor to.
+  function stringOption(name, allowed, fallback) {
+    var value = String(root.options[name] || "").toLowerCase()
+    return allowed.indexOf(value) === -1 ? fallback : value
   }
 
   function applyOptions(raw) {

@@ -23,6 +23,38 @@ test("side by side screens open outwards", () => {
   assert.deepEqual(layout["RIGHT"], { side: "right", hover: true })
 })
 
+test("a forced side pins every screen to that edge", () => {
+  const layout = Screens.layout([
+    screen("LEFT", 0, 0, 2560, 1440),
+    screen("RIGHT", 2560, 0, 2560, 1440)
+  ], "right")
+  assert.deepEqual(layout["LEFT"], { side: "right", hover: false })
+  assert.deepEqual(layout["RIGHT"], { side: "right", hover: true })
+})
+
+test("a forced side keeps the strip on an outside edge", () => {
+  const layout = Screens.layout([screen("ONLY", 0, 0, 2560, 1440)], "left")
+  assert.deepEqual(layout["ONLY"], { side: "left", hover: true })
+})
+
+test("a forced left edge on a seam has no strip", () => {
+  const layout = Screens.layout([
+    screen("LEFT", 0, 0, 2560, 1440),
+    screen("RIGHT", 2560, 0, 2560, 1440)
+  ], "left")
+  assert.deepEqual(layout["LEFT"], { side: "left", hover: true })
+  assert.deepEqual(layout["RIGHT"], { side: "left", hover: false })
+})
+
+test("an unknown side keeps the automatic layout", () => {
+  const screens = [
+    screen("LEFT", 0, 0, 2560, 1440),
+    screen("RIGHT", 2560, 0, 2560, 1440)
+  ]
+  assert.deepEqual(Screens.layout(screens, "diagonal"), Screens.layout(screens))
+  assert.deepEqual(Screens.layout(screens, "auto"), Screens.layout(screens))
+})
+
 test("stacked screens both open on the right", () => {
   const layout = Screens.layout([
     screen("TOP", 0, 0, 2560, 1440),
