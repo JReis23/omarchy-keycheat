@@ -7,7 +7,7 @@ import assert from "node:assert/strict"
 const source = readFileSync(new URL("../Binds.js", import.meta.url), "utf8")
   .replace(/^\.pragma library\s*$/m, "")
 const Binds = new Function(source +
-  "\nreturn { parse, group, groupTmux, parseTmux, count, filter, normalizeMods, splitCombo }")()
+  "\nreturn { parse, group, groupTmux, parseTmux, count, filter, highlight, conflicts, combo, queryTerms, normalizeMods, splitCombo }")()
 
 const SAMPLE = [
   "SUPER + K                           → Keybindings",
@@ -163,4 +163,59 @@ test("filter works on tmux rows too", () => {
 test("filter returns nothing when no row matches", () => {
   const sections = Binds.group(Binds.parse(SAMPLE))
   assert.deepEqual(Binds.filter(sections, "zzz-no-such-bind"), [])
+})
+
+const CONFLICT_SAMPLE = [
+  "ALT + TAB                      → Focus on next window",
+  "ALT + TAB                      → Reveal active window on top",
+  "SHIFT ALT + TAB                → Focus on previous window",
+  "ALT SHIFT + TAB                → Reveal active window on top",
+  "ALT + Alt_R                    → Start dictation (push-to-talk)",
+  "ALT + Alt_R                    → Stop dictation (push-to-talk)",
+  "SUPER + W                      → Close window",
+  "SUPER + W                      → Close window",
+  ""
+].join("\n")
+
+test("queryTerms splits on whitespace and drops repeats", () => {
+  assert.deepEqual(Binds.queryTerms("  SUPER   close super "), ["super", "close"])
+  assert.deepEqual(Binds.queryTerms("   "), [])
+  assert.deepEqual(Binds.queryTerms(""), [])
+})
+
+test("highlight wraps every term and leaves the rest alone", () => {
+  assert.equal(Binds.highlight("SUPER + W", "super", "<u>", "</u>"), "<u>SUPER</u> + W")
+  assert.equal(Binds.highlight("w close w", "w"), "<b>w</b> close <b>w</b>")
+  assert.equal(Binds.highlight("SUPER + W", ""), "SUPER + W")
+})
+
+test("highlight escapes the text before it adds markup", () => {
+  assert.equal(Binds.highlight("A & B < C", ""), "A &amp; B &lt; C")
+  assert.equal(Binds.highlight("A & B < C", "b"), "A &amp; <b>B</b> &lt; C")
+})
+
+test("highlight treats regex characters as literal terms", () => {
+  assert.equal(Binds.highlight("CTRL + [", "[", "<b>", "</b>"), "CTRL + <b>[</b>")
+})
+
+test("highlight matches the longest term first", () => {
+  assert.equal(Binds.highlight("super", "su super", "<b>", "</b>"), "<b>super</b>")
+})
+
+test("conflicts flags combos bound to different descriptions", () => {
+  const map = Binds.conflicts(Binds.group(Binds.parse(CONFLICT_SAMPLE)))
+  assert.deepEqual(Object.keys(map).sort(), ["ALT + Alt_R", "ALT + TAB", "ALT SHIFT + TAB"])
+  assert.deepEqual(map["ALT + TAB"], ["Focus on next window", "Reveal active window on top"])
+})
+
+test("a combo listed twice with the same description is not a conflict", () => {
+  const map = Binds.conflicts(Binds.group(Binds.parse(CONFLICT_SAMPLE)))
+  assert.equal(map["SUPER + W"], undefined)
+  assert.deepEqual(Binds.conflicts([]), {})
+})
+
+test("combo rebuilds the key as it is pressed", () => {
+  assert.equal(Binds.combo({ mods: "SUPER", key: "W" }), "SUPER + W")
+  assert.equal(Binds.combo({ mods: "", key: "XF86AudioMute" }), "XF86AudioMute")
+  assert.equal(Binds.combo(null), "")
 })
