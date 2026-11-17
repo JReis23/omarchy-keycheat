@@ -222,11 +222,50 @@ function queryTerms(query) {
   return terms
 }
 
+// How much a single query word says about a row. The bands are ordered on
+// purpose: a key that starts with the word is the best answer, then a key that
+// contains it, then the modifier group, then the description. A word that
+// matches two fields only earns the best of them, so the score never depends on
+// the order the words were typed in.
+var SCORE_KEY_PREFIX = 100
+var SCORE_KEY = 80
+var SCORE_MODS = 60
+var SCORE_DESCRIPTION_PREFIX = 40
+var SCORE_DESCRIPTION = 20
+
+function scoreTerm(section, item, term) {
+  var key = String(item.key || "").toLowerCase()
+  if (key.indexOf(term) === 0) return SCORE_KEY_PREFIX
+  if (key.indexOf(term) !== -1) return SCORE_KEY
+
+  if (String(section.mods || "").toLowerCase().indexOf(term) !== -1) return SCORE_MODS
+
+  var description = String(item.description || "").toLowerCase()
+  if (description.indexOf(term) === 0) return SCORE_DESCRIPTION_PREFIX
+  if (description.indexOf(term) !== -1) return SCORE_DESCRIPTION
+
+  return 0
+}
+
+// A row scores the sum of its words, and only when every word matched. Summing
+// makes "super w" and "w super" produce the same number; a word that matches
+// nothing rules the row out, exactly as `filter` did before ranking existed.
+function score(section, item, terms) {
+  var total = 0
+  for (var t = 0; t < terms.length; t++) {
+    var value = scoreTerm(section, item, terms[t])
+    if (value === 0) return 0
+    total += value
+  }
+  return total
+}
+
 // Case-insensitive search over the modifier, the key and the description.
 // Groups left without a match disappear, so the list only shows what matched.
 // Every word of the query must appear somewhere, so "super close" finds
 // SUPER + W even though the two words are not adjacent, and the order they are
-// typed in does not matter.
+// typed in does not matter. Rows keep the listing's order; `rank` is the one
+// that sorts them by how well they match.
 function filter(sections, query) {
   var terms = queryTerms(query)
   if (terms.length === 0) return sections
@@ -236,18 +275,39 @@ function filter(sections, query) {
     var section = sections[s]
     var items = []
     for (var i = 0; i < section.items.length; i++) {
-      var item = section.items[i]
-      var haystack = String(section.mods + " " + item.key + " " + item.description).toLowerCase()
-      var matched = true
-      for (var t = 0; t < terms.length; t++) {
-        if (haystack.indexOf(terms[t]) === -1) {
-          matched = false
-          break
-        }
-      }
-      if (matched) items.push(item)
+      if (score(section, section.items[i], terms) > 0) items.push(section.items[i])
     }
     if (items.length > 0) out.push({ mods: section.mods, items: items })
+  }
+  return out
+}
+
+// The same match as `filter`, with the closest rows first inside each group.
+// Ties keep the listing's natural order (modifier group, then numeric key
+// order), so a query that matches everything equally changes nothing. Groups
+// keep their order too: the list still reads SUPER, then CTRL, then ALT.
+function rank(sections, query) {
+  var terms = queryTerms(query)
+  if (terms.length === 0) return sections
+
+  var out = []
+  for (var s = 0; s < sections.length; s++) {
+    var section = sections[s]
+    var scored = []
+    for (var i = 0; i < section.items.length; i++) {
+      var value = score(section, section.items[i], terms)
+      if (value > 0) scored.push({ item: section.items[i], score: value, order: i })
+    }
+    if (scored.length === 0) continue
+
+    scored.sort(function(a, b) {
+      if (b.score !== a.score) return b.score - a.score
+      return a.order - b.order
+    })
+
+    var items = []
+    for (var k = 0; k < scored.length; k++) items.push(scored[k].item)
+    out.push({ mods: section.mods, items: items })
   }
   return out
 }

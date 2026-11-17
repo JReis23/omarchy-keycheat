@@ -7,7 +7,7 @@ import assert from "node:assert/strict"
 const source = readFileSync(new URL("../Binds.js", import.meta.url), "utf8")
   .replace(/^\.pragma library\s*$/m, "")
 const Binds = new Function(source +
-  "\nreturn { parse, group, groupTmux, parseTmux, count, filter, highlight, conflicts, combo, queryTerms, moveCursor, pageStep, normalizeMods, splitCombo }")()
+  "\nreturn { parse, group, groupTmux, parseTmux, count, filter, rank, highlight, conflicts, combo, queryTerms, moveCursor, pageStep, normalizeMods, splitCombo }")()
 
 const SAMPLE = [
   "SUPER + K                           → Keybindings",
@@ -126,6 +126,68 @@ test("filter matches every word of the query, in any order", () => {
   assert.equal(Binds.count(Binds.filter(sections, "close super")), 2)
   assert.equal(Binds.count(Binds.filter(sections, "xf86 volume")), 1)
   assert.equal(Binds.count(Binds.filter(sections, "close zzz")), 0)
+})
+
+const RANK_SAMPLE = [
+  "SUPER + W   → Close window",
+  "SUPER + Q   → Quit, then wake the window",
+  "SUPER + K   → Keybindings",
+  "SUPER + SPACE → Launch the app menu",
+  ""
+].join("\n")
+
+test("rank puts a key match before a description match", () => {
+  const sections = Binds.group(Binds.parse(RANK_SAMPLE))
+  const ranked = Binds.rank(sections, "w")
+  // W is the key; "window" in the other rows only matches the description.
+  assert.deepEqual(ranked[0].items.map((item) => item.key), ["W", "Q"])
+})
+
+test("rank scores a key prefix above a key substring above a description", () => {
+  const sections = Binds.group(Binds.parse([
+    "SUPER + F1      → Alpha",
+    "SUPER + BACKSPACE → Bravo",
+    "SUPER + Z      → Mentions BACK in text",
+    ""
+  ].join("\n")))
+  const ranked = Binds.rank(sections, "back")
+  assert.deepEqual(ranked[0].items.map((item) => item.key), ["BACKSPACE", "Z"])
+})
+
+test("rank gives the same order whatever order the words are typed in", () => {
+  const sections = Binds.group(Binds.parse(RANK_SAMPLE))
+  const a = Binds.rank(sections, "super w").map((s) => s.items.map((i) => i.key))
+  const b = Binds.rank(sections, "w super").map((s) => s.items.map((i) => i.key))
+  assert.deepEqual(a, b)
+  assert.equal(a[0][0], "W")
+})
+
+test("rank keeps the listing's order for equal scores", () => {
+  const sections = Binds.group(Binds.parse([
+    "SUPER + A → Same words here",
+    "SUPER + B → Same words here",
+    "SUPER + C → Same words here",
+    ""
+  ].join("\n")))
+  const ranked = Binds.rank(sections, "same")
+  assert.deepEqual(ranked[0].items.map((item) => item.key), ["A", "B", "C"])
+})
+
+test("rank matches exactly what filter matches", () => {
+  const sections = Binds.group(Binds.parse(SAMPLE))
+  for (const query of ["close", "super close", "volume", "alt", "zzz", "q"]) {
+    const kept = Binds.filter(sections, query).flatMap((s) => s.items.map((i) => s.mods + i.key))
+    const ranked = Binds.rank(sections, query).flatMap((s) => s.items.map((i) => s.mods + i.key))
+    assert.deepEqual(ranked.slice().sort(), kept.slice().sort(), query)
+  }
+})
+
+test("rank leaves group order alone and returns an empty query unchanged", () => {
+  const sections = Binds.group(Binds.parse(SAMPLE))
+  assert.equal(Binds.rank(sections, "  "), sections)
+  const mods = Binds.rank(sections, "window").map((s) => s.mods)
+  const original = sections.map((s) => s.mods).filter((m) => mods.includes(m))
+  assert.deepEqual(mods, original)
 })
 
 const TMUX_SAMPLE = [

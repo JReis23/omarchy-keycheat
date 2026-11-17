@@ -107,7 +107,7 @@ PanelWindow {
   readonly property bool activeLoaded: window.plugin
     ? (window.tab === "tmux" ? window.plugin.tmuxLoaded : window.plugin.loaded)
     : false
-  readonly property var visibleSections: Binds.filter(window.activeSections, window.query)
+  readonly property var visibleSections: Binds.rank(window.activeSections, window.query)
   readonly property int matchCount: Binds.count(window.visibleSections)
   readonly property int totalCount: Binds.count(window.activeSections)
   // Where each section's rows start in the flat cursor index, so a row delegate
