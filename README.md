@@ -64,7 +64,9 @@ omarchy plugin remove jr.keycheat
   ready (press it again to close the search); **`SUPER + F2`** pins or unpins
   that screen. Both need the binds from [Keybind](#keybind) below.
 - **Tabs** (under the search field): `Omarchy` shows the compositor's bindings,
-  `Tmux` shows tmux's. The search only looks inside the tab you are on.
+  `Tmux` shows tmux's. The search only looks inside the tab you are on. The Tmux
+  pill is hidden when `omarchy-menu-tmux-keybindings` returns nothing, so a
+  machine without tmux does not get a tab that can only report its own absence.
 - **Search** (top of the panel): click the field, or press the keybind below, and
   type. It filters on the modifier, the key and the description; every word of
   the query must match, in any order, so `super close` finds `SUPER + W`. The
@@ -141,6 +143,9 @@ Optional overrides in `~/.config/omarchy/shell.json`, under a `keycheat` key:
   "keycheat": {
     "width": 360,
     "opacity": 0.94,
+    "side": "auto",
+    "hideDelay": 220,
+    "edgeWidth": 8,
     "pinned": false
   }
 }
@@ -150,7 +155,20 @@ Optional overrides in `~/.config/omarchy/shell.json`, under a `keycheat` key:
 |---|---|---|
 | `width` | `360` | Panel width in pixels (clamped 240–640) |
 | `opacity` | `0.94` | Background opacity (clamped 0.4–1) |
+| `side` | `auto` | `auto`, `left` or `right` |
+| `hideDelay` | `220` | Milliseconds before an unpinned panel hides (clamped 0–2000) |
+| `edgeWidth` | `8` | Width of the hover strip in pixels (clamped 2–40) |
 | `pinned` | `false` | Pin every screen on the first run |
+
+`side: "auto"` keeps the geometric rule described under [Usage](#usage): each
+screen opens outwards, stacked screens use the right edge, and seams have no
+strip. Setting `left` or `right` pins every screen to that edge instead — useful
+when a portrait screen or an unusual arrangement is misread by the geometric
+rule. A screen whose forced edge is a seam keeps the panel but gets no hover
+strip, so open it with the keybind or pin it.
+
+Values out of range or not in the list fall back to the default silently; the
+panel is not the place to report a typo in a config file.
 
 The file hot-reloads on save. `pinned` is only a first-run default: from then on
 the panel's own pin state wins and is stored per screen in
