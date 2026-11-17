@@ -109,6 +109,25 @@ test("filter returns everything for an empty query", () => {
   assert.equal(Binds.count(Binds.filter(sections, "")), Binds.count(sections))
 })
 
+test("group sorts keys in numeric order, so F2 comes before F10", () => {
+  const sections = Binds.group(Binds.parse([
+    "SUPER + F1  → One",
+    "SUPER + F10 → Ten",
+    "SUPER + F2  → Two",
+    "SUPER + F12 → Twelve",
+    ""
+  ].join("\n")))
+  assert.deepEqual(sections[0].items.map((item) => item.key), ["F1", "F2", "F10", "F12"])
+})
+
+test("filter matches every word of the query, in any order", () => {
+  const sections = Binds.group(Binds.parse(SAMPLE))
+  assert.equal(Binds.count(Binds.filter(sections, "super close")), 2)
+  assert.equal(Binds.count(Binds.filter(sections, "close super")), 2)
+  assert.equal(Binds.count(Binds.filter(sections, "xf86 volume")), 1)
+  assert.equal(Binds.count(Binds.filter(sections, "close zzz")), 0)
+})
+
 const TMUX_SAMPLE = [
   "PREFIX                           → CTRL + SPACE / CTRL + B",
   "PREFIX + %                       → Split window horizontally",

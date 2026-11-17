@@ -14,6 +14,12 @@ PanelWindow {
 
   property var plugin: null
 
+  // Declared before anything that reads a label, so every binding below sees it.
+  Commons.Translations {
+    id: strings
+    directory: Qt.resolvedUrl("i18n")
+  }
+
   color: "transparent"
   WlrLayershell.namespace: "jr-keycheat"
   WlrLayershell.layer: WlrLayer.Top
@@ -72,8 +78,13 @@ PanelWindow {
   property string query: ""
   property bool searchFocused: false
   // Which listing the panel shows: the compositor's bindings or tmux's. Both
-  // come from Omarchy's own annotated listings and render the same way.
+  // come from Omarchy's own annotated listings and render the same way. Kept in
+  // one place so the pills and the keyboard shortcut cannot drift apart.
   property string tab: "omarchy"
+  readonly property var tabs: [
+    { id: "omarchy", label: strings.t("tab.omarchy") },
+    { id: "tmux", label: strings.t("tab.tmux") }
+  ]
   // Number of times the focus nudge below has fired, so a panel that cannot
   // get the keyboard gives up instead of retrying forever.
   property int focusAttempts: 0
@@ -134,7 +145,7 @@ PanelWindow {
   // Tab and Shift + Tab cycle the two listings without leaving the field, so
   // typing a query and switching source never needs the pointer.
   function switchTab(step) {
-    var ids = ["omarchy", "tmux"]
+    var ids = window.tabs.map(function(tab) { return tab.id })
     var index = ids.indexOf(window.tab)
     if (index === -1) index = 0
     window.tab = ids[(index + step + ids.length) % ids.length]
@@ -179,11 +190,6 @@ PanelWindow {
       window.releaseSearchFocus()
       if (!window.pinned) window.hoverRevealed = false
     }
-  }
-
-  Commons.Translations {
-    id: strings
-    directory: Qt.resolvedUrl("i18n")
   }
 
   mask: Region {
@@ -507,10 +513,7 @@ PanelWindow {
         spacing: Style.spacing.xs
 
         Repeater {
-          model: [
-            { id: "omarchy", label: strings.t("tab.omarchy") },
-            { id: "tmux", label: strings.t("tab.tmux") }
-          ]
+          model: window.tabs
 
           delegate: Rectangle {
             id: tabPill
