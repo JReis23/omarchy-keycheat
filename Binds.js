@@ -222,11 +222,50 @@ function queryTerms(query) {
   return terms
 }
 
+// How much a single query word says about a row. The bands are ordered on
+// purpose: a key that starts with the word is the best answer, then a key that
+// contains it, then the modifier group, then the description. A word that
+// matches two fields only earns the best of them, so the score never depends on
+// the order the words were typed in.
+var SCORE_KEY_PREFIX = 100
+var SCORE_KEY = 80
+var SCORE_MODS = 60
+var SCORE_DESCRIPTION_PREFIX = 40
+var SCORE_DESCRIPTION = 20
+
+function scoreTerm(section, item, term) {
+  var key = String(item.key || "").toLowerCase()
+  if (key.indexOf(term) === 0) return SCORE_KEY_PREFIX
+  if (key.indexOf(term) !== -1) return SCORE_KEY
+
+  if (String(section.mods || "").toLowerCase().indexOf(term) !== -1) return SCORE_MODS
+
+  var description = String(item.description || "").toLowerCase()
+  if (description.indexOf(term) === 0) return SCORE_DESCRIPTION_PREFIX
+  if (description.indexOf(term) !== -1) return SCORE_DESCRIPTION
+
+  return 0
+}
+
+// A row scores the sum of its words, and only when every word matched. Summing
+// makes "super w" and "w super" produce the same number; a word that matches
+// nothing rules the row out, exactly as `filter` did before ranking existed.
+function score(section, item, terms) {
+  var total = 0
+  for (var t = 0; t < terms.length; t++) {
+    var value = scoreTerm(section, item, terms[t])
+    if (value === 0) return 0
+    total += value
+  }
+  return total
+}
+
 // Case-insensitive search over the modifier, the key and the description.
 // Groups left without a match disappear, so the list only shows what matched.
 // Every word of the query must appear somewhere, so "super close" finds
 // SUPER + W even though the two words are not adjacent, and the order they are
-// typed in does not matter.
+// typed in does not matter. Rows keep the listing's order; `rank` is the one
+// that sorts them by how well they match.
 function filter(sections, query) {
   var terms = queryTerms(query)
   if (terms.length === 0) return sections
@@ -236,18 +275,39 @@ function filter(sections, query) {
     var section = sections[s]
     var items = []
     for (var i = 0; i < section.items.length; i++) {
-      var item = section.items[i]
-      var haystack = String(section.mods + " " + item.key + " " + item.description).toLowerCase()
-      var matched = true
-      for (var t = 0; t < terms.length; t++) {
-        if (haystack.indexOf(terms[t]) === -1) {
-          matched = false
-          break
-        }
-      }
-      if (matched) items.push(item)
+      if (score(section, section.items[i], terms) > 0) items.push(section.items[i])
     }
     if (items.length > 0) out.push({ mods: section.mods, items: items })
+  }
+  return out
+}
+
+// The same match as `filter`, with the closest rows first inside each group.
+// Ties keep the listing's natural order (modifier group, then numeric key
+// order), so a query that matches everything equally changes nothing. Groups
+// keep their order too: the list still reads SUPER, then CTRL, then ALT.
+function rank(sections, query) {
+  var terms = queryTerms(query)
+  if (terms.length === 0) return sections
+
+  var out = []
+  for (var s = 0; s < sections.length; s++) {
+    var section = sections[s]
+    var scored = []
+    for (var i = 0; i < section.items.length; i++) {
+      var value = score(section, section.items[i], terms)
+      if (value > 0) scored.push({ item: section.items[i], score: value, order: i })
+    }
+    if (scored.length === 0) continue
+
+    scored.sort(function(a, b) {
+      if (b.score !== a.score) return b.score - a.score
+      return a.order - b.order
+    })
+
+    var items = []
+    for (var k = 0; k < scored.length; k++) items.push(scored[k].item)
+    out.push({ mods: section.mods, items: items })
   }
   return out
 }
@@ -302,6 +362,161 @@ function combo(item) {
   var mods = String(item.mods || "")
   var key = String(item.key || "")
   return mods === "" ? key : mods + " + " + key
+}
+
+// How a favourite is stored in the state file. The combo alone is stable when a
+// description is edited, but ambiguous when the same combo is bound twice, so
+// the description rides along: "SUPER + W|Close window".
+function favouriteId(item) {
+  if (!item) return ""
+  var key = combo(item)
+  if (key === "") return ""
+  var description = String(item.description || "").trim()
+  return description === "" ? key : key + "|" + description
+}
+
+// The combo part of a stored id. The first "|" splits it: a combo never holds
+// one, a description may.
+function idCombo(id) {
+  var text = String(id || "")
+  var cut = text.indexOf("|")
+  return cut === -1 ? text : text.slice(0, cut)
+}
+
+// What a listing can answer about a list of stored ids: which row ids exist and
+// which combos exist. One pass, shared by every function below.
+function favouriteIndex(sections) {
+  var index = { exact: {}, combos: {} }
+  for (var s = 0; s < (sections || []).length; s++) {
+    var items = sections[s].items
+    for (var i = 0; i < items.length; i++) {
+      index.exact[favouriteId(items[i])] = true
+      index.combos[combo(items[i])] = true
+    }
+  }
+  return index
+}
+
+// The rows a list of stored ids marks, keyed by `favouriteId`. An id marks the
+// row it names exactly; when no row has that description any more it falls back
+// to every row on the same combo, so editing a description does not lose the
+// favourite. An id that matches nothing marks nothing: a bind removed from the
+// config is dropped quietly rather than shown as a ghost.
+function favouriteSet(sections, ids) {
+  var index = favouriteIndex(sections)
+  var byCombo = {}
+  for (var s = 0; s < (sections || []).length; s++) {
+    var items = sections[s].items
+    for (var i = 0; i < items.length; i++) {
+      var key = combo(items[i])
+      ;(byCombo[key] || (byCombo[key] = [])).push(favouriteId(items[i]))
+    }
+  }
+
+  var marked = {}
+  for (var n = 0; n < (ids || []).length; n++) {
+    var id = String(ids[n])
+    if (index.exact[id]) {
+      marked[id] = true
+      continue
+    }
+    var rows = byCombo[idCombo(id)] || []
+    for (var r = 0; r < rows.length; r++) marked[rows[r]] = true
+  }
+  return marked
+}
+
+function isFavourite(item, marked) {
+  return !!item && !!marked && marked[favouriteId(item)] === true
+}
+
+// The favourite rows of a listing, in the listing's own order. Favourites are a
+// shortcut to rows that already exist, never a second list with its own order:
+// marking one must not renumber the rest. `query` filters them like any other
+// row, and ranking never reorders them.
+function favouriteItems(sections, ids, query) {
+  var marked = favouriteSet(sections, ids)
+  var terms = queryTerms(query)
+  var out = []
+  for (var s = 0; s < (sections || []).length; s++) {
+    var section = sections[s]
+    for (var i = 0; i < section.items.length; i++) {
+      var item = section.items[i]
+      if (!isFavourite(item, marked)) continue
+      if (terms.length > 0 && score(section, item, terms) === 0) continue
+      out.push(item)
+    }
+  }
+  return out
+}
+
+// The ids after marking or unmarking `item`. Unmarking removes whatever marked
+// it, which may be a bare combo or an id whose description was edited, and
+// leaves every other id where it was.
+function toggleFavourite(ids, sections, item) {
+  var list = (ids || []).map(String)
+  var id = favouriteId(item)
+  if (id === "") return list
+
+  if (!isFavourite(item, favouriteSet(sections, list))) return list.concat([id])
+
+  var index = favouriteIndex(sections)
+  var key = combo(item)
+  return list.filter(function(stored) {
+    if (stored === id) return false
+    return !(idCombo(stored) === key && !index.exact[stored])
+  })
+}
+
+// Ids that no longer name anything in a loaded listing. Only called once that
+// listing has rows: an empty or failed read must not wipe the favourites.
+function pruneFavourites(ids, sections) {
+  var index = favouriteIndex(sections)
+  return (ids || []).map(String).filter(function(id) {
+    return index.exact[id] === true || index.combos[idCombo(id)] === true
+  })
+}
+
+// The state file. Version 1 adds the favourites; a file without a version holds
+// only pins and loads as the same pins with no favourites.
+var STATE_VERSION = 1
+
+function readState(raw) {
+  var parsed = null
+  try {
+    parsed = JSON.parse(String(raw || ""))
+  } catch (error) {
+    parsed = null
+  }
+  var state = { screens: null, favourites: { omarchy: [], tmux: [] } }
+  if (!parsed || typeof parsed !== "object") return state
+
+  if (Array.isArray(parsed.screens)) {
+    state.screens = parsed.screens.map(String).filter(function(name) { return name !== "" })
+  }
+  var saved = parsed.favourites
+  if (saved && typeof saved === "object") {
+    var tabs = ["omarchy", "tmux"]
+    for (var t = 0; t < tabs.length; t++) {
+      var list = saved[tabs[t]]
+      if (!Array.isArray(list)) continue
+      state.favourites[tabs[t]] = list.map(String).filter(function(id, at, all) {
+        return id !== "" && all.indexOf(id) === at
+      })
+    }
+  }
+  return state
+}
+
+function writeState(screens, favourites) {
+  return JSON.stringify({
+    version: STATE_VERSION,
+    screens: (screens || []).slice().sort(),
+    favourites: {
+      omarchy: ((favourites || {}).omarchy || []).slice(),
+      tmux: ((favourites || {}).tmux || []).slice()
+    }
+  }, null, 2) + "\n"
 }
 
 // Cursor arithmetic over the flat list of visible rows. It clamps at the ends

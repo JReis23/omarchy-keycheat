@@ -7,7 +7,7 @@ import assert from "node:assert/strict"
 const source = readFileSync(new URL("../Binds.js", import.meta.url), "utf8")
   .replace(/^\.pragma library\s*$/m, "")
 const Binds = new Function(source +
-  "\nreturn { parse, group, groupTmux, parseTmux, count, filter, highlight, conflicts, combo, queryTerms, moveCursor, pageStep, normalizeMods, splitCombo }")()
+  "\nreturn { parse, group, groupTmux, parseTmux, count, filter, rank, favouriteId, favouriteSet, favouriteItems, toggleFavourite, pruneFavourites, isFavourite, readState, writeState, highlight, conflicts, combo, queryTerms, moveCursor, pageStep, normalizeMods, splitCombo }")()
 
 const SAMPLE = [
   "SUPER + K                           → Keybindings",
@@ -128,6 +128,68 @@ test("filter matches every word of the query, in any order", () => {
   assert.equal(Binds.count(Binds.filter(sections, "close zzz")), 0)
 })
 
+const RANK_SAMPLE = [
+  "SUPER + W   → Close window",
+  "SUPER + Q   → Quit, then wake the window",
+  "SUPER + K   → Keybindings",
+  "SUPER + SPACE → Launch the app menu",
+  ""
+].join("\n")
+
+test("rank puts a key match before a description match", () => {
+  const sections = Binds.group(Binds.parse(RANK_SAMPLE))
+  const ranked = Binds.rank(sections, "w")
+  // W is the key; "window" in the other rows only matches the description.
+  assert.deepEqual(ranked[0].items.map((item) => item.key), ["W", "Q"])
+})
+
+test("rank scores a key prefix above a key substring above a description", () => {
+  const sections = Binds.group(Binds.parse([
+    "SUPER + F1      → Alpha",
+    "SUPER + BACKSPACE → Bravo",
+    "SUPER + Z      → Mentions BACK in text",
+    ""
+  ].join("\n")))
+  const ranked = Binds.rank(sections, "back")
+  assert.deepEqual(ranked[0].items.map((item) => item.key), ["BACKSPACE", "Z"])
+})
+
+test("rank gives the same order whatever order the words are typed in", () => {
+  const sections = Binds.group(Binds.parse(RANK_SAMPLE))
+  const a = Binds.rank(sections, "super w").map((s) => s.items.map((i) => i.key))
+  const b = Binds.rank(sections, "w super").map((s) => s.items.map((i) => i.key))
+  assert.deepEqual(a, b)
+  assert.equal(a[0][0], "W")
+})
+
+test("rank keeps the listing's order for equal scores", () => {
+  const sections = Binds.group(Binds.parse([
+    "SUPER + A → Same words here",
+    "SUPER + B → Same words here",
+    "SUPER + C → Same words here",
+    ""
+  ].join("\n")))
+  const ranked = Binds.rank(sections, "same")
+  assert.deepEqual(ranked[0].items.map((item) => item.key), ["A", "B", "C"])
+})
+
+test("rank matches exactly what filter matches", () => {
+  const sections = Binds.group(Binds.parse(SAMPLE))
+  for (const query of ["close", "super close", "volume", "alt", "zzz", "q"]) {
+    const kept = Binds.filter(sections, query).flatMap((s) => s.items.map((i) => s.mods + i.key))
+    const ranked = Binds.rank(sections, query).flatMap((s) => s.items.map((i) => s.mods + i.key))
+    assert.deepEqual(ranked.slice().sort(), kept.slice().sort(), query)
+  }
+})
+
+test("rank leaves group order alone and returns an empty query unchanged", () => {
+  const sections = Binds.group(Binds.parse(SAMPLE))
+  assert.equal(Binds.rank(sections, "  "), sections)
+  const mods = Binds.rank(sections, "window").map((s) => s.mods)
+  const original = sections.map((s) => s.mods).filter((m) => mods.includes(m))
+  assert.deepEqual(mods, original)
+})
+
 const TMUX_SAMPLE = [
   "PREFIX                           → CTRL + SPACE / CTRL + B",
   "PREFIX + %                       → Split window horizontally",
@@ -241,4 +303,112 @@ test("pageStep turns a viewport into whole rows, at least one", () => {
   assert.equal(Binds.pageStep(30, 10), 1)
   assert.equal(Binds.pageStep(0, 300), 1)
   assert.equal(Binds.pageStep(30, 0), 1)
+})
+
+const FAV_SAMPLE = [
+  "SUPER + W   → Close window",
+  "SUPER + K   → Keybindings",
+  "SUPER + T   → Terminal",
+  "ALT + TAB   → Cycle windows",
+  "ALT + TAB   → Cycle workspaces",
+  ""
+].join("\n")
+
+const favSections = () => Binds.group(Binds.parse(FAV_SAMPLE))
+const keysOf = (items) => items.map((item) => item.key)
+
+test("favouriteId carries the combo and the description", () => {
+  const item = favSections()[0].items[0]
+  assert.match(Binds.favouriteId(item), /^SUPER \+ \w\|.+/)
+  assert.equal(Binds.favouriteId(null), "")
+})
+
+test("favourites come out in the listing's order, not the order they were marked", () => {
+  const sections = favSections()
+  const ids = ["SUPER + T|Terminal", "SUPER + W|Close window"]
+  assert.deepEqual(keysOf(Binds.favouriteItems(sections, ids, "")), ["T", "W"])
+})
+
+test("a removed bind is dropped quietly and a bare combo still marks its row", () => {
+  const sections = favSections()
+  assert.deepEqual(keysOf(Binds.favouriteItems(sections, ["SUPER + Z|Gone"], "")), [])
+  assert.deepEqual(keysOf(Binds.favouriteItems(sections, ["SUPER + K"], "")), ["K"])
+})
+
+test("an id falls back to its combo when the description was edited", () => {
+  const sections = favSections()
+  const items = Binds.favouriteItems(sections, ["SUPER + K|Old description"], "")
+  assert.deepEqual(keysOf(items), ["K"])
+})
+
+test("a combo bound twice keeps its two favourites apart", () => {
+  const sections = favSections()
+  const alt = sections.find((section) => section.mods === "ALT")
+  const marked = Binds.favouriteSet(sections, ["ALT + TAB|Cycle workspaces"])
+  assert.equal(Binds.isFavourite(alt.items[0], marked), false)
+  assert.equal(Binds.isFavourite(alt.items[1], marked), true)
+})
+
+test("the query filters favourites without reordering them", () => {
+  const sections = favSections()
+  const ids = ["SUPER + W|Close window", "SUPER + T|Terminal"]
+  assert.deepEqual(keysOf(Binds.favouriteItems(sections, ids, "term")), ["T"])
+})
+
+test("toggleFavourite marks, unmarks and leaves other ids in place", () => {
+  const sections = favSections()
+  const super_ = sections.find((section) => section.mods === "SUPER").items
+  const w = super_.find((item) => item.key === "W")
+  const t = super_.find((item) => item.key === "T")
+
+  let ids = Binds.toggleFavourite([], sections, w)
+  ids = Binds.toggleFavourite(ids, sections, t)
+  assert.deepEqual(ids, ["SUPER + W|Close window", "SUPER + T|Terminal"])
+
+  ids = Binds.toggleFavourite(ids, sections, w)
+  assert.deepEqual(ids, ["SUPER + T|Terminal"])
+})
+
+test("unmarking removes a bare combo that was marking the row", () => {
+  const sections = favSections()
+  const k = sections.find((section) => section.mods === "SUPER").items.find((item) => item.key === "K")
+  assert.deepEqual(Binds.toggleFavourite(["SUPER + K", "SUPER + T|Terminal"], sections, k),
+    ["SUPER + T|Terminal"])
+})
+
+test("pruneFavourites drops ids whose bind is gone", () => {
+  const sections = favSections()
+  assert.deepEqual(
+    Binds.pruneFavourites(["SUPER + W|Close window", "SUPER + Z|Gone", "SUPER + K|Edited"], sections),
+    ["SUPER + W|Close window", "SUPER + K|Edited"])
+})
+
+test("the state file round-trips favourites and pins", () => {
+  const text = Binds.writeState(["DP-3", "DP-1"], { omarchy: ["SUPER + W|Close window"], tmux: [] })
+  const state = Binds.readState(text)
+  assert.equal(JSON.parse(text).version, 1)
+  assert.deepEqual(state.screens, ["DP-1", "DP-3"])
+  assert.deepEqual(state.favourites, { omarchy: ["SUPER + W|Close window"], tmux: [] })
+})
+
+test("a state file from before favourites loads its pins and no favourites", () => {
+  const state = Binds.readState('{ "screens": ["DP-3"] }')
+  assert.deepEqual(state.screens, ["DP-3"])
+  assert.deepEqual(state.favourites, { omarchy: [], tmux: [] })
+})
+
+test("a missing or broken state file reads as empty, without pins to restore", () => {
+  for (const raw of ["", "{", "null", "[]", undefined]) {
+    const state = Binds.readState(raw)
+    assert.equal(state.screens, null)
+    assert.deepEqual(state.favourites, { omarchy: [], tmux: [] })
+  }
+})
+
+test("readState ignores junk inside the favourites lists", () => {
+  const state = Binds.readState(JSON.stringify({
+    version: 1,
+    favourites: { omarchy: ["A|b", "", "A|b", 3], tmux: "nope" }
+  }))
+  assert.deepEqual(state.favourites, { omarchy: ["A|b", "3"], tmux: [] })
 })
