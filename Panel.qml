@@ -78,6 +78,11 @@ PanelWindow {
   // Search state. The query lives here so the list can filter without touching
   // the shared bindings the service parsed.
   property string query: ""
+  // Flat index into the filtered rows, shared by all sections. It clamps at the
+  // ends instead of wrapping, and is only -1 when there is nothing to select.
+  property int cursor: 0
+  // Flat index of the row that was just copied, or -1. Cleared by `copyTimer`.
+  property int copiedAt: -1
   property bool searchFocused: false
   // Which listing the panel shows: the compositor's bindings or tmux's. Both
   // come from Omarchy's own annotated listings and render the same way. Kept in
@@ -105,13 +110,24 @@ PanelWindow {
   readonly property var visibleSections: Binds.filter(window.activeSections, window.query)
   readonly property int matchCount: Binds.count(window.visibleSections)
   readonly property int totalCount: Binds.count(window.activeSections)
+  // Where each section's rows start in the flat cursor index, so a row delegate
+  // knows whether it is the selected one.
+  readonly property var rowStart: {
+    var starts = []
+    var total = 0
+    for (var s = 0; s < window.visibleSections.length; s++) {
+      starts.push(total)
+      total += window.visibleSections[s].items.length
+    }
+    return starts
+  }
   // Combos bound to more than one description. Computed over the whole tab, not
   // the filtered view, so a badge does not disappear while a query is typed.
   readonly property var conflicts: Binds.conflicts(window.activeSections)
   // One row plus the gap between rows, so an arrow key moves exactly one line.
   readonly property int rowStep: Math.round(Style.fontPx(0.95) * 1.5) + Style.spacing.sm
 
-  onTabChanged: list.contentY = 0
+  onTabChanged: window.resetCursor()
   // A listing that disappears while the panel is open must not leave it on a tab
   // that no longer exists.
   onTabsChanged: {
@@ -151,11 +167,59 @@ PanelWindow {
     window.searchFocused = false
   }
 
-  // The list is the point of the panel, so it scrolls from the keyboard while
-  // the search field holds it: the field is single-line, so the arrows are free.
-  function scrollList(delta) {
+  // Flat index -> row item. The rows live in per-section Repeaters, so the one
+  // that owns the index is found by walking the section lengths; there is no
+  // second model of the geometry to keep in sync.
+  function rowAt(index) {
+    if (index < 0) return null
+    var remaining = index
+    for (var s = 0; s < sectionRepeater.count; s++) {
+      var section = sectionRepeater.itemAt(s)
+      if (!section || !section.rowItems) continue
+      var count = section.modelData.items.length
+      if (remaining < count) return section.rowItems.itemAt(remaining)
+      remaining -= count
+    }
+    return null
+  }
+
+  // Keep the selected row inside the viewport. Only scrolls when it is out of
+  // view, so moving one row does not recentre the list under the pointer.
+  function scrollCursorIntoView() {
+    var row = window.rowAt(window.cursor)
+    if (!row) return
+    var y = row.mapToItem(bindColumn, 0, 0).y
     var maxY = Math.max(0, list.contentHeight - list.height)
-    list.contentY = Math.max(0, Math.min(maxY, list.contentY + delta))
+    if (y < list.contentY) list.contentY = Math.max(0, y)
+    else if (y + row.height > list.contentY + list.height)
+      list.contentY = Math.min(maxY, y + row.height - list.height)
+  }
+
+  // Move the cursor by `delta` rows. `Binds.moveCursor` clamps, so the ends of
+  // the list do not wrap.
+  function moveCursor(delta) {
+    if (window.matchCount === 0) return
+    window.cursor = Binds.moveCursor(window.cursor, delta, window.matchCount)
+    window.scrollCursorIntoView()
+  }
+
+  // Put the selected binding on the clipboard. The combo alone is what gets
+  // pasted back into a config or a terminal, so the description stays behind.
+  function copyCursor() {
+    if (!window.plugin || window.matchCount === 0) return
+    var row = window.rowAt(window.cursor)
+    if (!row || !row.bind) return
+    window.plugin.copy(Binds.combo(row.bind))
+    window.copiedAt = window.cursor
+    copyTimer.restart()
+  }
+
+  // A new query or tab starts the cursor at the top again, and forgets any
+  // "Copied" label left over from the previous listing.
+  function resetCursor() {
+    list.contentY = 0
+    window.cursor = 0
+    window.copiedAt = -1
   }
 
   // Tab and Shift + Tab cycle the two listings without leaving the field, so
@@ -182,7 +246,14 @@ PanelWindow {
       + descriptions.join(" · ")
   }
 
-  onQueryChanged: list.contentY = 0
+  onQueryChanged: window.resetCursor()
+  onMatchCountChanged: {
+    // A shorter listing (a narrower query, a reload) must not leave the cursor
+    // past the last row.
+    var last = Math.max(0, window.matchCount - 1)
+    if (window.cursor > last) window.cursor = last
+    if (window.copiedAt >= window.matchCount) window.copiedAt = -1
+  }
   onRevealedChanged: if (!window.revealed) window.releaseSearchFocus()
 
   // A keybind asks the panel on the focused screen to open with the field
@@ -461,27 +532,34 @@ PanelWindow {
           Keys.onPressed: function(event) {
             switch (event.key) {
             case Qt.Key_Down:
-              window.scrollList(window.rowStep)
+              window.moveCursor(1)
               event.accepted = true
               break
             case Qt.Key_Up:
-              window.scrollList(-window.rowStep)
+              window.moveCursor(-1)
               event.accepted = true
               break
             case Qt.Key_PageDown:
-              window.scrollList(list.height * 0.9)
+              window.moveCursor(Binds.pageStep(window.rowStep, list.height))
               event.accepted = true
               break
             case Qt.Key_PageUp:
-              window.scrollList(-list.height * 0.9)
+              window.moveCursor(-Binds.pageStep(window.rowStep, list.height))
               event.accepted = true
               break
             case Qt.Key_Home:
-              window.scrollList(-list.contentHeight)
+              window.cursor = 0
+              window.scrollCursorIntoView()
               event.accepted = true
               break
             case Qt.Key_End:
-              window.scrollList(list.contentHeight)
+              window.cursor = Math.max(0, window.matchCount - 1)
+              window.scrollCursorIntoView()
+              event.accepted = true
+              break
+            case Qt.Key_Return:
+            case Qt.Key_Enter:
+              window.copyCursor()
               event.accepted = true
               break
             case Qt.Key_Tab:
@@ -636,12 +714,18 @@ PanelWindow {
           spacing: Style.spacing.sm
 
           Repeater {
+            id: sectionRepeater
             model: window.visibleSections
 
             delegate: Column {
               id: section
               required property var modelData
               required property int index
+
+              // The rows are Repeater-owned; exposing the Repeater lets the
+              // panel find the row at a flat cursor index without mirroring
+              // section heights and gaps here.
+              readonly property var rowItems: rowRepeater
 
               width: bindColumn.width
               spacing: Style.spacing.xs
@@ -663,12 +747,18 @@ PanelWindow {
               }
 
               Repeater {
+                id: rowRepeater
                 model: section.modelData.items
 
                 delegate: BindRow {
+                  readonly property int flatIndex: window.rowStart[section.index] + index
+
                   width: section.width
                   bind: modelData
                   query: window.query
+                  selected: window.cursor === flatIndex
+                  copied: window.copiedAt === flatIndex
+                  copiedLabel: strings.t("row.copied")
                   conflictDescriptions: window.conflictDescriptions(modelData)
                   conflictHint: window.conflictHint(modelData)
                 }
@@ -715,6 +805,14 @@ PanelWindow {
         font.pixelSize: Style.fontPx(0.95)
       }
     }
+  }
+
+  // Long enough to read, short enough not to linger on a row that is no longer
+  // the one being looked at.
+  Timer {
+    id: copyTimer
+    interval: 1400
+    onTriggered: window.copiedAt = -1
   }
 
   Timer {

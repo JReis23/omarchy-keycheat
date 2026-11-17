@@ -7,7 +7,7 @@ import assert from "node:assert/strict"
 const source = readFileSync(new URL("../Binds.js", import.meta.url), "utf8")
   .replace(/^\.pragma library\s*$/m, "")
 const Binds = new Function(source +
-  "\nreturn { parse, group, groupTmux, parseTmux, count, filter, highlight, conflicts, combo, queryTerms, normalizeMods, splitCombo }")()
+  "\nreturn { parse, group, groupTmux, parseTmux, count, filter, highlight, conflicts, combo, queryTerms, moveCursor, pageStep, normalizeMods, splitCombo }")()
 
 const SAMPLE = [
   "SUPER + K                           → Keybindings",
@@ -218,4 +218,27 @@ test("combo rebuilds the key as it is pressed", () => {
   assert.equal(Binds.combo({ mods: "SUPER", key: "W" }), "SUPER + W")
   assert.equal(Binds.combo({ mods: "", key: "XF86AudioMute" }), "XF86AudioMute")
   assert.equal(Binds.combo(null), "")
+})
+
+test("moveCursor clamps at both ends instead of wrapping", () => {
+  assert.equal(Binds.moveCursor(0, 1, 5), 1)
+  assert.equal(Binds.moveCursor(4, 1, 5), 4)
+  assert.equal(Binds.moveCursor(0, -1, 5), 0)
+  assert.equal(Binds.moveCursor(2, 10, 5), 4)
+  assert.equal(Binds.moveCursor(2, -10, 5), 0)
+})
+
+test("moveCursor handles an empty list and bad input", () => {
+  assert.equal(Binds.moveCursor(0, 1, 0), -1)
+  assert.equal(Binds.moveCursor(-1, 0, 3), 0)
+  assert.equal(Binds.moveCursor("2", "1", 5), 3)
+  assert.equal(Binds.moveCursor(0, NaN, 5), 0)
+})
+
+test("pageStep turns a viewport into whole rows, at least one", () => {
+  assert.equal(Binds.pageStep(30, 300), 10)
+  assert.equal(Binds.pageStep(30, 329), 10)
+  assert.equal(Binds.pageStep(30, 10), 1)
+  assert.equal(Binds.pageStep(0, 300), 1)
+  assert.equal(Binds.pageStep(30, 0), 1)
 })

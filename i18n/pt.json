@@ -10,6 +10,7 @@
   "panel.results": "%1 de %2",
   "group.none": "Sem modificador",
   "row.conflict": "%1 atalhos usam esta combinação",
+  "row.copied": "Copiado",
   "tab.omarchy": "Omarchy",
   "tab.tmux": "Tmux",
   "panel.tmuxMissing": "Nenhum atalho de tmux encontrado. Confirma que `omarchy-menu-tmux-keybindings --print` funciona."
