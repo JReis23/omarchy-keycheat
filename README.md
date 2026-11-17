@@ -67,9 +67,11 @@ omarchy plugin remove jr.keycheat
   `Tmux` shows tmux's. The search only looks inside the tab you are on.
 - **Search** (top of the panel): click the field, or press the keybind below, and
   type. It filters on the modifier, the key and the description; every word of
-  the query must match, in any order, so `super close` finds `SUPER + W`.
-  `Escape` clears the text, then closes the panel. The query is kept if the
-  panel hides, so hovering it again brings the same results back.
+  the query must match, in any order, so `super close` finds `SUPER + W`. The
+  words that matched are underlined in the key and bold in the description, so
+  a result always shows why it is there. `Escape` clears the text, then closes
+  the panel. The query is kept if the panel hides, so hovering it again brings
+  the same results back.
 - **Keyboard**, while the field has the keyboard: `↑`/`↓` scroll one row,
   `PageUp`/`PageDown` a screenful, `Home`/`End` jump to either end, and
   `Tab`/`Shift + Tab` switch between the Omarchy and Tmux tabs without leaving
@@ -82,6 +84,12 @@ omarchy plugin remove jr.keycheat
 - **Hide**: unpins that screen and lets the panel slide away.
 
 Hovering a row wraps its description instead of truncating it.
+
+A combo bound to more than one description is flagged with a small `2×` at the
+right edge; hover the row to see the descriptions that share it. Omarchy ships
+with a few of these (`ALT + TAB`, `SHIFT + ALT + TAB`, `ALT + Alt_R`), and only
+one of them runs when the key is pressed. The count is computed over the listing
+you are on, so the Hyprland and tmux bindings are never compared with each other.
 
 The card uses the same inset as the tiled windows (`gaps_out + border_size`), so
 its outline lines up with theirs instead of floating over the edge.

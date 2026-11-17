@@ -9,6 +9,7 @@
   "panel.loading": "Reading keybindings…",
   "panel.results": "%1 of %2",
   "group.none": "No modifier",
+  "row.conflict": "%1 bindings use this combination",
   "tab.omarchy": "Omarchy",
   "tab.tmux": "Tmux",
   "panel.tmuxMissing": "No tmux keybindings found. Check that `omarchy-menu-tmux-keybindings --print` works."

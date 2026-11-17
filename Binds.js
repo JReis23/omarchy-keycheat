@@ -211,14 +211,25 @@ function count(sections) {
   return total
 }
 
+// The words a query is made of, lowercased and without repeats. Shared by the
+// filter and the highlighter so a row can never highlight something it did not
+// match on, or match on something it does not highlight.
+function queryTerms(query) {
+  var parts = String(query || "").toLowerCase().trim().split(/\s+/)
+  var terms = []
+  for (var i = 0; i < parts.length; i++)
+    if (parts[i] !== "" && terms.indexOf(parts[i]) === -1) terms.push(parts[i])
+  return terms
+}
+
 // Case-insensitive search over the modifier, the key and the description.
 // Groups left without a match disappear, so the list only shows what matched.
-// The query is split on whitespace and every word must appear somewhere, so
-// "super close" finds SUPER + W even though the two words are not adjacent, and
-// the order they are typed in does not matter.
+// Every word of the query must appear somewhere, so "super close" finds
+// SUPER + W even though the two words are not adjacent, and the order they are
+// typed in does not matter.
 function filter(sections, query) {
-  var terms = String(query || "").toLowerCase().trim().split(/\s+/)
-  if (terms.length === 1 && terms[0] === "") return sections
+  var terms = queryTerms(query)
+  if (terms.length === 0) return sections
 
   var out = []
   for (var s = 0; s < sections.length; s++) {
@@ -229,7 +240,7 @@ function filter(sections, query) {
       var haystack = String(section.mods + " " + item.key + " " + item.description).toLowerCase()
       var matched = true
       for (var t = 0; t < terms.length; t++) {
-        if (terms[t] !== "" && haystack.indexOf(terms[t]) === -1) {
+        if (haystack.indexOf(terms[t]) === -1) {
           matched = false
           break
         }
@@ -238,5 +249,80 @@ function filter(sections, query) {
     }
     if (items.length > 0) out.push({ mods: section.mods, items: items })
   }
+  return out
+}
+
+// Match positions are indices into the plain string, but the row renders HTML,
+// so every run has to be escaped before it gets there. `&` first, or the
+// entities of the later replacements would be escaped again.
+function escapeHtml(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+}
+
+function escapePattern(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+// Returns `text` ready for `Text.StyledText`, with every query term wrapped in
+// `open`/`close` and everything else escaped. The terms are the same ones
+// `filter` used, so the highlight explains why the row is in the list.
+function highlight(text, query, open, close) {
+  var source = String(text || "")
+  var terms = queryTerms(query)
+  if (terms.length === 0) return escapeHtml(source)
+
+  // Longest first, so a query of "su super" wraps the whole word instead of
+  // leaving "per" outside the match.
+  terms = terms.slice().sort(function(a, b) { return b.length - a.length })
+  var pattern = new RegExp("(" + terms.map(escapePattern).join("|") + ")", "gi")
+  var opening = open === undefined ? "<b>" : String(open)
+  var closing = close === undefined ? "</b>" : String(close)
+
+  var out = ""
+  var last = 0
+  var match
+  while ((match = pattern.exec(source)) !== null) {
+    out += escapeHtml(source.slice(last, match.index))
+    out += opening + escapeHtml(match[0]) + closing
+    last = match.index + match[0].length
+    // A zero-length match would loop forever. No term can be empty, but this
+    // keeps a future change from hanging the shell.
+    if (match[0] === "") pattern.lastIndex += 1
+  }
+  return out + escapeHtml(source.slice(last))
+}
+
+// A combo as it is pressed, rebuilt from the parts the listing gives. The
+// modifiers are already normalised by `parse`/`parseTmux`.
+function combo(item) {
+  if (!item) return ""
+  var mods = String(item.mods || "")
+  var key = String(item.key || "")
+  return mods === "" ? key : mods + " + " + key
+}
+
+// Combos bound to more than one description, keyed by combo. A combo listed
+// twice with the same description is one binding shown twice, not a conflict.
+// Each listing has its own keyspace, so never pass Hyprland and tmux bindings
+// to the same call.
+function conflicts(sections) {
+  var byCombo = {}
+  for (var s = 0; s < (sections || []).length; s++) {
+    var items = sections[s].items
+    for (var i = 0; i < items.length; i++) {
+      var key = combo(items[i])
+      var descriptions = byCombo[key] || (byCombo[key] = [])
+      if (descriptions.indexOf(items[i].description) === -1)
+        descriptions.push(items[i].description)
+    }
+  }
+
+  var out = {}
+  var keys = Object.keys(byCombo).sort()
+  for (var k = 0; k < keys.length; k++)
+    if (byCombo[keys[k]].length > 1) out[keys[k]] = byCombo[keys[k]]
   return out
 }

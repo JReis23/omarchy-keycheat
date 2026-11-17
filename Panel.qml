@@ -98,6 +98,9 @@ PanelWindow {
   readonly property var visibleSections: Binds.filter(window.activeSections, window.query)
   readonly property int matchCount: Binds.count(window.visibleSections)
   readonly property int totalCount: Binds.count(window.activeSections)
+  // Combos bound to more than one description. Computed over the whole tab, not
+  // the filtered view, so a badge does not disappear while a query is typed.
+  readonly property var conflicts: Binds.conflicts(window.activeSections)
   // One row plus the gap between rows, so an arrow key moves exactly one line.
   readonly property int rowStep: Math.round(Style.fontPx(0.95) * 1.5) + Style.spacing.sm
 
@@ -149,6 +152,21 @@ PanelWindow {
     var index = ids.indexOf(window.tab)
     if (index === -1) index = 0
     window.tab = ids[(index + step + ids.length) % ids.length]
+  }
+
+  // Every description that shares a row's combo. Empty for a conflict-free row.
+  function conflictDescriptions(bind) {
+    if (!bind) return []
+    return window.conflicts[Binds.combo(bind)] || []
+  }
+
+  // The tooltip: the count, then every description that shares the combo. Kept
+  // in one string so each row needs no translations object of its own.
+  function conflictHint(bind) {
+    var descriptions = window.conflictDescriptions(bind)
+    if (descriptions.length < 2) return ""
+    return strings.t("row.conflict").arg(descriptions.length) + "\n"
+      + descriptions.join(" · ")
   }
 
   onQueryChanged: list.contentY = 0
@@ -617,8 +635,12 @@ PanelWindow {
               topPadding: index === 0 ? 0 : Style.spacing.md
 
               Text {
-                textFormat: Text.PlainText
-                text: section.modelData.mods === "" ? strings.t("group.none") : section.modelData.mods
+                textFormat: Text.StyledText
+                // The filter also matches a section's modifier, so the header
+                // has to show the highlight for that match to make sense.
+                text: Binds.highlight(
+                  section.modelData.mods === "" ? strings.t("group.none") : section.modelData.mods,
+                  window.query, "<u>", "</u>")
                 color: Commons.Color.foreground
                 font.family: Style.fontFamily
                 font.pixelSize: Style.fontPx(0.85)
@@ -633,6 +655,9 @@ PanelWindow {
                 delegate: BindRow {
                   width: section.width
                   bind: modelData
+                  query: window.query
+                  conflictDescriptions: window.conflictDescriptions(modelData)
+                  conflictHint: window.conflictHint(modelData)
                 }
               }
             }
