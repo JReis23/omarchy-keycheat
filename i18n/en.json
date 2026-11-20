@@ -16,5 +16,7 @@
   "row.copied": "Copied",
   "tab.omarchy": "Omarchy",
   "tab.tmux": "Tmux",
-  "panel.tmuxMissing": "No tmux keybindings found. Check that `omarchy-menu-tmux-keybindings --print` works."
+  "tab.nvim": "Neovim",
+  "panel.tmuxMissing": "No tmux keybindings found. Check that `omarchy-menu-tmux-keybindings --print` works.",
+  "panel.nvimMissing": "No Neovim keybindings found. Check that `nvim` starts and the plugin's `nvim-keybindings.sh` runs."
 }

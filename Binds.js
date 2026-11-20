@@ -205,6 +205,143 @@ function groupTmux(entries) {
   return sections
 }
 
+// Neovim has no annotated listing of its own, so `nvim-keybindings.sh` starts
+// a headless instance and prints one mapping per line, tab separated:
+//
+//   n<TAB><Leader>ff<TAB>Find files
+//
+// The first field is the mode, the second the keys as Neovim writes them, and
+// the third the description. The mode becomes the group, so the sheet reads
+// NORMAL, VISUAL, INSERT, and so on, and the keys stay on their own row.
+var NVIM_GROUPS = {
+  n: "NORMAL",
+  v: "VISUAL",
+  i: "INSERT",
+  t: "TERMINAL",
+  c: "COMMAND",
+  o: "OPERATOR"
+}
+var NVIM_GROUP_ORDER = ["NORMAL", "VISUAL", "INSERT", "TERMINAL", "COMMAND", "OPERATOR"]
+
+var NVIM_MODIFIERS = { c: "CTRL", s: "SHIFT", a: "ALT", m: "ALT", d: "SUPER" }
+
+// Neovim's names for keys that would otherwise read as punctuation or as the
+// word the token happens to spell.
+var NVIM_SPECIAL = {
+  leader: "LEADER",
+  space: "SPACE",
+  cr: "ENTER",
+  enter: "ENTER",
+  return: "ENTER",
+  nl: "ENTER",
+  esc: "ESC",
+  tab: "TAB",
+  bs: "BACKSPACE",
+  bspace: "BACKSPACE",
+  del: "DELETE",
+  ins: "INSERT",
+  up: "UP",
+  down: "DOWN",
+  left: "LEFT",
+  right: "RIGHT",
+  home: "HOME",
+  end: "END",
+  pageup: "PAGE UP",
+  pagedown: "PAGE DOWN",
+  lt: "<",
+  bar: "|",
+  bslash: "\\"
+}
+
+// One `<...>` token: `<C-S-p>` becomes "CTRL+SHIFT+P" and `<Leader>` becomes
+// "LEADER". A token without modifiers is a special name or a plain key.
+function nvimToken(token) {
+  var text = String(token || "")
+  var lower = text.toLowerCase()
+  if (lower.indexOf("-") === -1) return NVIM_SPECIAL[lower] || lower.toUpperCase()
+
+  var parts = text.split("-")
+  var key = parts[parts.length - 1]
+  var mods = []
+  for (var i = 0; i < parts.length - 1; i++) {
+    var mod = NVIM_MODIFIERS[parts[i].toLowerCase()]
+    if (mod) mods.push(mod)
+  }
+
+  var name = NVIM_SPECIAL[key.toLowerCase()] || key.toUpperCase()
+  return mods.length === 0 ? name : mods.join("+") + "+" + name
+}
+
+// Turns the keys Neovim reports into one readable sequence: `<Leader>ff`
+// becomes "LEADER FF" and `<C-w>v` becomes "CTRL+W V". A space separates one
+// press from the next; a "+" means the keys are held together. The raw keys are
+// kept beside this for the copy action, which pastes them into a config.
+function nvimKeys(lhs) {
+  var source = String(lhs || "")
+  if (source === "") return ""
+
+  var out = []
+  var pattern = /<([^<>]+)>|([^<]+)/g
+  var match
+  while ((match = pattern.exec(source)) !== null) {
+    if (match[1] !== undefined) out.push(nvimToken(match[1]))
+    else out.push(match[2].toUpperCase())
+  }
+  return out.join(" ")
+}
+
+function parseNvim(raw) {
+  var lines = String(raw || "").split("\n")
+  var out = []
+  for (var i = 0; i < lines.length; i++) {
+    var fields = lines[i].split("\t")
+    if (fields.length < 3) continue
+
+    var mode = fields[0].trim()
+    var lhs = fields[1]
+    var description = fields[2].trim()
+    var group = NVIM_GROUPS[mode]
+    if (!group || lhs === "" || description === "") continue
+
+    out.push({
+      mods: group,
+      key: nvimKeys(lhs),
+      description: description,
+      copy: lhs
+    })
+  }
+  return out
+}
+
+function nvimGroupRank(name) {
+  var index = NVIM_GROUP_ORDER.indexOf(name)
+  return index === -1 ? NVIM_GROUP_ORDER.length : index
+}
+
+function groupNvim(entries) {
+  var byMods = {}
+  for (var i = 0; i < entries.length; i++) {
+    var entry = entries[i]
+    if (!byMods[entry.mods]) byMods[entry.mods] = []
+    byMods[entry.mods].push(entry)
+  }
+
+  var mods = Object.keys(byMods)
+  mods.sort(function(a, b) {
+    var ra = nvimGroupRank(a)
+    var rb = nvimGroupRank(b)
+    if (ra !== rb) return ra - rb
+    if (a < b) return -1
+    if (a > b) return 1
+    return 0
+  })
+
+  var sections = []
+  for (var m = 0; m < mods.length; m++)
+    sections.push({ mods: mods[m], items: sortByKey(byMods[mods[m]]) })
+  return sections
+}
+
 function count(sections) {
   var total = 0
   for (var i = 0; i < sections.length; i++) total += sections[i].items.length

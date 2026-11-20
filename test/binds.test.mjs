@@ -7,7 +7,7 @@ import assert from "node:assert/strict"
 const source = readFileSync(new URL("../Binds.js", import.meta.url), "utf8")
   .replace(/^\.pragma library\s*$/m, "")
 const Binds = new Function(source +
-  "\nreturn { parse, group, groupTmux, parseTmux, count, filter, rank, favouriteId, favouriteSet, favouriteItems, toggleFavourite, pruneFavourites, isFavourite, readState, writeState, highlight, conflicts, combo, queryTerms, moveCursor, pageStep, normalizeMods, splitCombo }")()
+  "\nreturn { parse, group, groupTmux, parseTmux, parseNvim, groupNvim, nvimKeys, count, filter, rank, favouriteId, favouriteSet, favouriteItems, toggleFavourite, pruneFavourites, isFavourite, readState, writeState, highlight, conflicts, combo, queryTerms, moveCursor, pageStep, normalizeMods, splitCombo }")()
 
 const SAMPLE = [
   "SUPER + K                           → Keybindings",
@@ -225,6 +225,64 @@ test("filter works on tmux rows too", () => {
 test("filter returns nothing when no row matches", () => {
   const sections = Binds.group(Binds.parse(SAMPLE))
   assert.deepEqual(Binds.filter(sections, "zzz-no-such-bind"), [])
+})
+
+const NVIM_SAMPLE = [
+  "n\t<Leader>ff\tFind files",
+  "n\t<Leader>sg\tLive grep",
+  "v\t<C-S-P>\tPaste without yanking",
+  "i\t<M-k>\tMove Up",
+  "t\t<C-\\><C-n>\tGo to normal mode",
+  "c\t<C-b>\tScroll backward",
+  "o\t<Leader>z\tOperator only",
+  ""
+].join("\n")
+
+test("parseNvim reads the mode, the keys and the description", () => {
+  const entries = Binds.parseNvim(NVIM_SAMPLE)
+  assert.equal(entries.length, 7)
+  assert.deepEqual(entries[0], {
+    mods: "NORMAL",
+    key: "LEADER FF",
+    description: "Find files",
+    copy: "<Leader>ff"
+  })
+  assert.deepEqual(entries[2].mods, "VISUAL")
+  assert.deepEqual(entries[2].key, "CTRL+SHIFT+P")
+  assert.deepEqual(entries[3].key, "ALT+K")
+  assert.deepEqual(entries[4].key, "CTRL+\\ CTRL+N")
+})
+
+test("nvimKeys keeps presses apart from chords", () => {
+  assert.equal(Binds.nvimKeys("<C-w>v"), "CTRL+W V")
+  assert.equal(Binds.nvimKeys("<Leader><Tab>["), "LEADER TAB [")
+  assert.equal(Binds.nvimKeys("gcc"), "GCC")
+  assert.equal(Binds.nvimKeys("<Space>w"), "SPACE W")
+  assert.equal(Binds.nvimKeys("<Esc>"), "ESC")
+})
+
+test("parseNvim skips lines without a description or a known mode", () => {
+  const raw = [
+    "n\t<Leader>x\t",
+    "z\t<Leader>y\tUnknown mode",
+    "n\t<Leader>z\tKept"
+  ].join("\n")
+  assert.deepEqual(Binds.parseNvim(raw).map((item) => item.key), ["LEADER Z"])
+})
+
+test("groupNvim puts normal first, operator last and sorts the keys", () => {
+  const sections = Binds.groupNvim(Binds.parseNvim(NVIM_SAMPLE))
+  assert.deepEqual(sections.map((section) => section.mods),
+    ["NORMAL", "VISUAL", "INSERT", "TERMINAL", "COMMAND", "OPERATOR"])
+  assert.deepEqual(sections[0].items.map((item) => item.key), ["LEADER FF", "LEADER SG"])
+})
+
+test("the same Neovim keys in two modes are not a conflict", () => {
+  const sections = Binds.groupNvim(Binds.parseNvim([
+    "n\t<C-s>\tSave",
+    "v\t<C-s>\tSave selection"
+  ].join("\n")))
+  assert.deepEqual(Binds.conflicts(sections), {})
 })
 
 const CONFLICT_SAMPLE = [

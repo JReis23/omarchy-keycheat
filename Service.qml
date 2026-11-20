@@ -31,7 +31,7 @@ Item {
   property var pinnedScreens: ({})
   // Rows the user marked, per listing, as ids from `Binds.favouriteId`. Stored in
   // the same state file as the pins.
-  property var favourites: ({ omarchy: [], tmux: [] })
+  property var favourites: ({ omarchy: [], tmux: [], nvim: [] })
   // Pins outlive a shell restart. The state file is the record; the config is
   // only read, so `shell.json` stays untouched as the README promises.
   readonly property string statePath: {
@@ -72,6 +72,22 @@ Item {
     var base = Quickshell.env("XDG_CONFIG_HOME")
     if (!base) base = Quickshell.env("HOME") + "/.config"
     return base + "/tmux/tmux.conf"
+  }
+
+  // Neovim's mappings. Neovim has no annotated listing command, so the plugin
+  // ships a headless dump; it reads the whole config, so it runs once and on
+  // `refresh` rather than on every Hyprland reload.
+  property var nvimSections: []
+  property bool nvimLoaded: false
+  property bool nvimFailed: false
+  property bool nvimPending: false
+  // The plugin's own folder, so the service can run the scripts shipped beside
+  // it. The registry records it on the manifest for third-party plugins.
+  readonly property string pluginDir: {
+    var dir = root.manifest && root.manifest.__sourceDir
+      ? String(root.manifest.__sourceDir) : ""
+    if (dir === "") dir = Qt.resolvedUrl(".").toString().replace(/^file:\/\//, "")
+    return dir.replace(/\/$/, "")
   }
 
   // Window border width from Hyprland, used to line the panel card up with the
@@ -164,13 +180,25 @@ Item {
     tmuxProcess.running = true
   }
 
+  // Neovim's dump starts a headless instance with the user's config, so it has
+  // no file to watch here: it is read on start, on `refresh`, and again when a
+  // previous read failed (a shell that started before the config was ready).
+  function reloadNvim() {
+    if (nvimProcess.running) {
+      nvimPending = true
+      return
+    }
+    nvimProcess.running = true
+  }
+
   // Called when a panel is revealed, so a listing that failed earlier (a shell
   // that started before Hyprland was ready, a transient error) is read again
-  // on first use rather than staying empty. Both commands are quick, and a
+  // on first use rather than staying empty. The commands are quick, and a
   // listing that is already running only queues one more read.
   function ensureLoaded() {
     if (!root.loaded) root.reload()
     if (!root.tmuxLoaded) root.reloadTmux()
+    if (!root.nvimLoaded) root.reloadNvim()
   }
 
   // Clipboard writes go through bash because `wl-copy` stays alive until the
@@ -233,6 +261,7 @@ Item {
     root.pinStateLoaded = true
     root.pruneFavourites("omarchy")
     root.pruneFavourites("tmux")
+    root.pruneFavourites("nvim")
   }
 
   function saveState() {
@@ -243,12 +272,14 @@ Item {
   }
 
   function sectionsFor(tab) {
-    return tab === "tmux" ? root.tmuxSections : root.sections
+    if (tab === "tmux") return root.tmuxSections
+    if (tab === "nvim") return root.nvimSections
+    return root.sections
   }
 
   // The panel only sends the intent; the service owns the file, like the pins.
   function toggleFavourite(tab, bind) {
-    var name = tab === "tmux" ? "tmux" : "omarchy"
+    var name = tab === "tmux" ? "tmux" : tab === "nvim" ? "nvim" : "omarchy"
     var next = Object.assign({}, root.favourites)
     next[name] = Binds.toggleFavourite(next[name], root.sectionsFor(name), bind)
     root.favourites = next
@@ -395,7 +426,6 @@ Item {
   Process {
     id: tmuxProcess
     command: ["omarchy-menu-tmux-keybindings", "--print"]
-
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -412,6 +442,32 @@ Item {
       if (!root.tmuxPending) return
       root.tmuxPending = false
       Qt.callLater(root.reloadTmux)
+    }
+  }
+
+  // Neovim's own listing, produced by the script beside this file. It starts a
+  // headless Neovim, so this is the slowest of the three reads and the one the
+  // panel hides while it has nothing to show.
+  Process {
+    id: nvimProcess
+    command: ["bash", root.pluginDir + "/nvim-keybindings.sh"]
+
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var entries = Binds.parseNvim(text)
+        root.nvimSections = Binds.groupNvim(entries)
+        root.nvimLoaded = entries.length > 0
+        root.nvimFailed = entries.length === 0
+        root.pruneFavourites("nvim")
+      }
+    }
+
+    onExited: {
+      if (!root.nvimLoaded) root.nvimFailed = true
+      if (!root.nvimPending) return
+      root.nvimPending = false
+      Qt.callLater(root.reloadNvim)
     }
   }
 
@@ -466,7 +522,7 @@ Item {
     function unpinAll(): void { root.setPinnedAll(false) }
     function search(): void { root.requestSearch() }
     function leave(direction: string): void { root.leave(direction) }
-    function refresh(): void { root.reload(); root.reloadTmux() }
+    function refresh(): void { root.reload(); root.reloadTmux(); root.reloadNvim() }
   }
 
   Variants {
@@ -489,6 +545,7 @@ Item {
     root.restoreState(pinStateFile.text())
     root.reload()
     root.reloadTmux()
+    root.reloadNvim()
     borderProcess.running = true
   }
 }
