@@ -23,6 +23,9 @@ omarchy plugin add https://github.com/JReis23/omarchy-keycheat --enable
 ```
 
 Update, disable or remove it with `omarchy plugin update|disable|remove jr.keycheat`.
+After an update, run `omarchy restart shell`. The shell reloads a changed plugin
+on its own, but it can keep the old version running, and a new tab or listing then
+does not show up until the shell restarts.
 
 ## Keys and mouse
 
@@ -149,6 +152,8 @@ omarchy-shell jr.keycheat refresh    # re-read the bindings
   `~/.config/omarchy/plugins/jr.keycheat/nvim-keybindings.sh | head`. Only
   mappings with a description are listed, and buffer-local ones (LSP) are not
   included. Reload with `omarchy-shell jr.keycheat refresh`.
+- **A new tab or bind does not show after an update.** The running shell kept the
+  old version. Run `omarchy restart shell`.
 - **A bind is missing.** Rows come from `omarchy menu keybindings --print`; a bind
   without a description is not listed there either.
 
@@ -172,7 +177,8 @@ omarchy plugin validate .      # the shell's own manifest check
 
 CI runs the same tests on every push and pull request. Saving a file in
 `~/.config/omarchy/plugins/jr.keycheat/` reloads the plugin; force it with
-`omarchy-shell shell rescanPlugins`.
+`omarchy-shell shell rescanPlugins`. If a change still does not show up, restart
+the shell with `omarchy restart shell`.
 
 ## License
 
