@@ -16,5 +16,7 @@
   "row.copied": "Copiado",
   "tab.omarchy": "Omarchy",
   "tab.tmux": "Tmux",
-  "panel.tmuxMissing": "Nenhum atalho de tmux encontrado. Confirma que `omarchy-menu-tmux-keybindings --print` funciona."
+  "tab.nvim": "Neovim",
+  "panel.tmuxMissing": "Nenhum atalho de tmux encontrado. Confirma que `omarchy-menu-tmux-keybindings --print` funciona.",
+  "panel.nvimMissing": "Nenhum atalho do Neovim encontrado. Confirma que o `nvim` arranca e que o `nvim-keybindings.sh` do plugin corre."
 }

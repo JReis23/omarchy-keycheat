@@ -84,17 +84,19 @@ PanelWindow {
   // Flat index of the row that was just copied, or -1. Cleared by `copyTimer`.
   property int copiedAt: -1
   property bool searchFocused: false
-  // Which listing the panel shows: the compositor's bindings or tmux's. Both
-  // come from Omarchy's own annotated listings and render the same way. Kept in
-  // one place so the pills and the keyboard shortcut cannot drift apart.
+  // Which listing the panel shows: the compositor's bindings, tmux's or
+  // Neovim's. All three are key/description listings and render the same way.
+  // Kept in one place so the pills and the keyboard shortcut cannot drift apart.
   property string tab: "omarchy"
-  // Tmux only earns a pill when its listing exists: a tab that can only report
-  // that the command is missing is noise. It stays while the first read is in
-  // flight, so the pills do not flicker on startup.
+  // A listing only earns a pill when its read produced rows: a tab that can
+  // only report that the command is missing is noise. It stays while the first
+  // read is in flight, so the pills do not flicker on startup.
   readonly property bool tmuxAvailable: window.plugin ? !window.plugin.tmuxFailed : true
+  readonly property bool nvimAvailable: window.plugin ? !window.plugin.nvimFailed : true
   readonly property var tabs: {
     var list = [{ id: "omarchy", label: strings.t("tab.omarchy") }]
     if (window.tmuxAvailable) list.push({ id: "tmux", label: strings.t("tab.tmux") })
+    if (window.nvimAvailable) list.push({ id: "nvim", label: strings.t("tab.nvim") })
     return list
   }
   // Number of times the focus nudge below has fired, so a panel that cannot
@@ -102,11 +104,27 @@ PanelWindow {
   property int focusAttempts: 0
   readonly property var activeSections: {
     if (!window.plugin) return []
-    return window.tab === "tmux" ? window.plugin.tmuxSections : window.plugin.sections
+    if (window.tab === "tmux") return window.plugin.tmuxSections
+    if (window.tab === "nvim") return window.plugin.nvimSections
+    return window.plugin.sections
   }
   readonly property bool activeLoaded: window.plugin
-    ? (window.tab === "tmux" ? window.plugin.tmuxLoaded : window.plugin.loaded)
+    ? (window.tab === "tmux" ? window.plugin.tmuxLoaded
+      : window.tab === "nvim" ? window.plugin.nvimLoaded
+      : window.plugin.loaded)
     : false
+  // What the empty state says: the listing's own failure message once its read
+  // finished, or that it is still being read.
+  readonly property string emptyMessage: {
+    if (!window.plugin) return ""
+    var failed = window.tab === "tmux" ? window.plugin.tmuxFailed
+      : window.tab === "nvim" ? window.plugin.nvimFailed
+      : window.plugin.failed
+    if (!failed) return strings.t("panel.loading")
+    if (window.tab === "tmux") return strings.t("panel.tmuxMissing")
+    if (window.tab === "nvim") return strings.t("panel.nvimMissing")
+    return strings.t("panel.empty")
+  }
   // The ids the user marked in this listing, and the rows they mark. The marked
   // rows also stay in their own group below: a favourite is a shortcut, not a
   // move.
@@ -220,12 +238,13 @@ PanelWindow {
   }
 
   // Put the selected binding on the clipboard. The combo alone is what gets
-  // pasted back into a config or a terminal, so the description stays behind.
+  // pasted back into a config or a terminal, so the description stays behind;
+  // Neovim rows carry their own raw keys beside the label the panel shows.
   function copyCursor() {
     if (!window.plugin || window.rowCount === 0) return
     var row = window.rowAt(window.cursor)
     if (!row || !row.bind) return
-    window.plugin.copy(Binds.combo(row.bind))
+    window.plugin.copy(row.bind.copy ? String(row.bind.copy) : Binds.combo(row.bind))
     window.copiedAt = window.cursor
     copyTimer.restart()
   }
@@ -258,7 +277,7 @@ PanelWindow {
     window.copiedAt = -1
   }
 
-  // Tab and Shift + Tab cycle the two listings without leaving the field, so
+  // Tab and Shift + Tab cycle the listings without leaving the field, so
   // typing a query and switching source never needs the pointer.
   function switchTab(step) {
     var ids = window.tabs.map(function(tab) { return tab.id })
@@ -841,13 +860,7 @@ PanelWindow {
         wrapMode: Text.Wrap
         text: window.activeLoaded
           ? strings.t("panel.noResults")
-          : window.tab === "tmux"
-            ? (window.plugin && window.plugin.tmuxFailed
-                ? strings.t("panel.tmuxMissing")
-                : strings.t("panel.loading"))
-            : (window.plugin && window.plugin.failed
-                ? strings.t("panel.empty")
-                : strings.t("panel.loading"))
+          : window.emptyMessage
         color: Commons.Color.muted
         font.family: Style.fontFamily
         font.pixelSize: Style.fontPx(0.95)
